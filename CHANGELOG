@@ -1,0 +1,248 @@
+0.8.25:
+
+ + Fixed mouse input in Mouse Effect: Andromeda, *AGAIN*.
+ + Officially supports dinput8.dll injection; the compatibility menu does not offer this
+     as one of its choices, but it will eventually.
+  >> dinput8.dll, for games that use this, has the greatest chance of working with fullscreen
+       video capture software.
+ + Improved keyboard input processing, particularly how it behves while in Input Exclusive mode
+     and you trigger the keybinding to toggle the config menu.
+  >> This is preparing for customizable keybindings, I've been promising them for a long time :)
+ + Fixed occasional right-to-left window orientation problems in 64-bit builds
+ + Fixed D3D11 reference counting underflows in some games, especially when a third-party
+     render enhancing mod is present.
+ + Fixed rare texture cache hash collision problem for textures that are removed from the cache
+     because a graphics engine has altered them.
+
+0.8.24.4:
+
+ + Fix deadlock caused by MSI Nahimic due to hotpatching 32-bit code
+  >> Add MORE padding bytes than the x86 ABI requires because Nahimic is borked
+
+0.8.24.3:
+
+ + Fixed all known multi-threaded rendering problems (Dishonored2 can be debugged now).
+ + Reduced texture cache overhead
+ + Improved WMI monitoring performance
+
+0.8.24.1 / 2:
+
+ + Crash logs are now stored persistently in logs/crash/<date>/...
+ + Updated SKIM64 to add more functionality to tray menu
+
+0.8.24:
+
+ + Added Window Border Style settings to Display menu
+ + Corrected several Windows 7 issues
+ + Improved DOSBox OpenGL support
+ + Improved thread-safety in D3D11 shader mod tools; still can't safely debug Dishonored 2
+ + Fixed input support in Final Fantasy 8
+
+0.8.23:
+
+ + Fixed potential startup deadlock with Steam Overlay and CoInitializeSecurity (...)
+ + Fixed SK_NoFailMove behavior (prevents updates) when attempting to patch a locked file
+ + Fixed (evict-on-update) D3D11 texture cache in The Witcher 3 and Divinity: Original Sin
+ + Added logs/installer.log when installing through SKIM
+ + Added module name and fixed newline endings in game_output.log
+
+0.8.22:
+
+ + [Misc]  Stopping injection while programs are using Special K no longer crashes them :)
+ + [SKIM]  Closing SKIM while injection is enabled now triggers a confirmation dialog
+ + [D3D11] Added option to enable staging texture cache (for Unity games)
+ + [SKIM]  Added option to start SKIM automatically during install and to system tray
+ + [SKIM]  Added list of (64-bit) programs currently injected and a confirmation if you
+             attempt to stop injection while a program is using Special K.
+ + [SKIM]  Added tooltip to system tray icon
+ + [D3D11] Added support for changing fullscreen display scaling mode while your game is
+             running; should make using centered scaling modes a bit more intuitive.
+ + [Misc]  Added injection stats to Help menu, mouseover Global Injector version to see
+             basic information about games recently played.
+
+0.8.21:
+
+ + [SKIM]   Changed system tray icon (to another KDE icon =P) so that it is easier to
+              recognize
+ + [XInput] Fix for games that use XInputGetStateEx (...) without allocating the correct
+              memory size for the data structure (+1 DWORD)
+ + [D3D11]  Reduced D3D11 API overhead in games that stream memory-mapped textures when
+              texture caching is enabled but the render mod window is not open
+ + [SKIM]   Using +Inject or -Inject commandline switches starts SKIM minimized to the
+              tray; left-click the icon in the try to restore it
+ + [SKIM]   Branch migration takes effect immediately in all software except for the
+              global injector
+ + [SKIM]   Only one instance of SKIM can run simultaneously, minimized instances will
+              be restored if a new instance is launched
+ + [SKIM]   The commandline switch -Inject will now kill any running injection instances
+              and exit
+
+0.8.20:
+
+ + [D3D11] Added texture updae frequency (0 = Manually Refresh, 1+ = Auto) for the
+             texture mod tools.
+ + [D3D11] Added option to replace 24-bit Depth Buffer with 32-bit
+ + [D3D11] Improved multi-threaded safety in the D3D11 mod tools for games that draw
+             from multiple threads.
+ + [SKIM]  Added support to minimize SKIM v 0.7.0+ to the System Tray and have it
+             manage global injection for the end-user.
+ + [D3D9]  Fixed swapchain recovery afer device loss
+ + [GL]    Improved startup time
+
+0.8.19:
+
+ + [D3D11] Re-wrote stateblock code to minimize reference counting problems
+ + [D3D11] Fixed stateblock leak that prevented ResizeBuffers (...) from working
+ + Fixed late initialization problems if compat menu is dismissed by pressing OK
+ + Added version to compatibility menu
+ + Improved compatibility menu and update menu's input focus behavior
+
+0.8.18:
+ 
+ + Added version info to wrapper DLL installations; updating is not supported
+ + Installing a wrapper DLL through the compat menu now copies the config from the
+     global profile.
+ + Uninstalling a wrapper DLL copies the local config back to the global profile
+ + Fixed G-Sync indicator in D3D11
+
+0.8.17:
+
+ + Added Last-Known-RenderAPI to Special K's INI file to help with the auto-detect
+     mechanism on the compatibility menu
+ + Corrected scenario where having a local API wrapper version of Special K in-place
+     and one of the API virtual files (i.e. SpecialK.d3d9) would cause both DLLs to
+       load.
+ + Temporarily re-enabled auto-update.
+
+0.8.16:
+ + Renamed Window/Fullscreen override options now that they work in multiple APIs
+     (refer to Display.Output)
+ + Added version info for all plug-ins to the help menu
+ + Store user preferences for G-Sync and Input API persistently.
+ + Extended screen mode option to include D3D11
+ + Changed the D3D9 screen mode option to a combobox for mode and checkbox for
+     permanent override.
+
+0.8.15:
+
+ + Injection Compatibility Options Menu DRASTICALLY Overhauled
+ -------------------------------------------------------------
+  * Can now be used for both local DLL wrappers and global injector
+  * Can be activated with late global injection as a means of installing a
+      local DLL.
+   >> Activate global injection, hold Ctrl + Shift, activate your game, click
+        Install and then deactivate global injection.
+  * Added config file reset option
+  * Added plug-in disable feature (ReShade)
+  * Added D3D8/DDraw plug-in validation
+  * Improved API auto-detection and validation of executable's DLL Import Table.
+
+ + Added sleepless render / window thread options to framerate limiter to fix
+     games like LEGO City Undercover, that trash their window's message pump.
+ + Added Fullscreen override option to control panel for D3D9 games
+
+0.8.14:
+
+ + Add D3D11 Safe Fullscreen option for games that disable fullscreen mode
+    (i.e. LEGO City Undercover, Final Fantasy X/X-2, anything on Windows Store)
+    ==> Set SafeFullscreenMode in dxgi.ini / SpecialK.ini, then press Alt+Enter
+ + Added option to install wrapper DLL through global injector's compat. menu
+ + Fixed framerate statistics above ~333 FPS
+ + Disabled DirectDraw and D3D8 in 64-bit builds
+ + Disabled Vulkan and D3D12 in 32-bit builds
+ + Added support for games that change render API without a full restart;
+     OSD will not work, but the game will continue running ;)
+ + Fixed WMI Performance Monitoring thread initialization
+ + Added DirectDraw support (using dgVoodoo)
+ + Fixed OpenGL vertex memory management in Sinless
+ + Fixed achievement popups with partial progress (no longer treated as unlock)
+ + Screenshot on achievement unlock fixed when popups are disabled
+ + Added Texture LOD Selection to D3D11 Texture View
+ + Added Texture Set Filtering to D3D11 Texture View
+ + Added XInput vibration parameter validation
+ + Fixed alt-tab in Fullscreen mode in EverQuest and Hunie Pop
+ + Fixed double-input processing in God Eater 2: Rageburst
+ + Fixed SteamAPI init. problems in Final Fantasy IX
+ + Fixed typo (spe----) in EULA
+ + Improved Gamepad Input in Audio Session Selector
+ + Changed OSD to draw below ImGui control panel in D3D9
+ + Fixed Achievement Popups in Senkran Kagura: Shinovi Versus
+ + Fixed Overlay Rendering in Pillars of Eternity / Tyranny / Torment
+
+0.8.13:
+
+ + Removed Chinese Unicode code points from ImGui font; added Latin punctuation
+ + Fixed NieR: Automata Texture Staging
+ + Added Thread Local Storage Stack
+ + Added play time tracking to non-Steam games
+ + Fixed hour roll-over problems in play time stats
+    >> Special K is Y2K38 ready! :) <<
+ + d3dcompiler_*.dll is pinned at load-time to prevent TLS issues in software
+     that loads and unloads this DLL when it compiles HLSL shaders.
+ + Fixed 3DMigoto compatibility
+     (ImGui changed to use hooked D3D11 functions instead of trampoline)
+ + Added support for resolutions as low as 1280x720 and 1024x768
+ + Added option to force-inject steam_api into games published before SteamWorks.
+     (steam_api{64}.dll must be placed in Documents\My Mods\SpecialK\)
+ + Added configuration for CEGUI initialization (safe vs. fast [default])
+ + Enabled D3D11 Texture Cache by DEFAULT (for new mod tools to work)
+ + Added Memory View (D3D11)
+ + Added Texture View (D3D11)
+ + Added RenderTarget View (D3D11)
+ + Added Shader Disassembly View (D3D11)
+ + Added option to disable DebugBreak (...) in kernel32.dll
+ + Added fix for incorrectly packed compressed DDS textures
+ + Remove Malware detection, I have no intention to maintain that feature
+
+0.8.12.3:
+
+ + Added game playtime to control panel title
+ + Added Synaptics touchpad mousewheel support for DirectInput/RawInput/HID
+ + Added temporary file cleanup (i.e. SKI*.tmp, Version\*.old, ...) to DLL init.
+ + Improved global injection startup/shutdown reliability
+ + Fixed control panel window moving if its title changes
+ + Fixed Fallout 4 / Scaleform exception handling
+ + Fixed game_output.log being saved to the wrong location when using the
+     global injector.
+ + Fixed legacy keyboard input in Steam overlay in Skyrim: Special Edition
+ + Fixed legacy mouse input after Alt+Tab in EverQuest
+ + Switched framerate limiter over to new render backend system; WaitForVBLANK
+     may not function correctly in some D3D9Ex games.
+
+0.8.12.2:
+
+ + Added a D3D9 ForceWindowed override to SpecialK.ini
+ + Fixed SteamAPI exception handling in 32-bit ABI (Steam overlay callback)
+ + Fixed double-input processing through PeekMessage
+ + Fixed CEGUI / ImGui reset on multi-frame D3D9 device loss recovery
+
+0.8.12.1:
+
+ + Added 1.5 second delay unload for blacklisted applications to prevent performance
+     problems when the CBT hook inevitably tries to re-inject the DLL.
+
+0.8.12:
+
+ + Removed legacy command console code (low-level keyboard hook, message pump)
+ + Removed FreeLibrary hook, memory leaks in other software were being caught
+     while debugging... it was obnoxious ;)
+ + Fixed SteamAPI_Init being called instead of SteamAPI_Init_Detour
+ + Fixed DirectDraw issues in Disgaea2 (presumably for video playback)
+ + Fixed LoadLibraryW unhook during shutdown (had been unhooking LoadLibraryA)
+ + Disabled relative mouse move in NieR: Automata - it always sends legacy input
+ + Fixed problems dispatching keyboard input early from PeekMessage caused
+     in Mass Effect: Andromeda
+ + Added pirate tooltips to EULA ;)
+ + Added resolution warning to EULA screen
+ + Fixed license text truncation on EULA screen
+ + Added code to compensate for games that pull WM_KEYDOWN messages out of the
+     pump by using PeekMessage* with PM_REMOVE set.
+ + Enabled relative mouse motion from RawInput in any game that tries to capture
+     mouse input non-cooperatively.
+ + Added support for wrapping d3d8.dll, no native renderer exists or ever will,
+     the project relies on optional third-party API wrappers for legacy APIs.
+ + Optional dgVoodoo support added, place the (all 32-bit) DLLs in
+     Documents\My Mods\Special K\PlugIns\ThirdParty\dgVoodoo\
+ + Fixed-up floating-point exception handling in Prey
+
+--------- (Initial GitLab Migration) ---------
