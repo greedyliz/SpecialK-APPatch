@@ -177,8 +177,7 @@ SK_ImGui_DrawEULA (LPVOID reserved)
     ImGui::BeginChild ("EULA_Inset", ImVec2 (0.0f, 0.0f),                     false, ImGuiWindowFlags_NavFlattened);
     ImGui::BeginGroup ();
 
-    if (ImGui::CollapsingHeader (pirate ? "Overview of Products Unlicensed" : 
-                                          "Overview of Products Licensed"))
+    if (ImGui::CollapsingHeader ("Overview of Products Licensed"))
     {
       ImGui::PushFont (ImGui::GetIO ().Fonts->Fonts [1]); // Fixed-width font
       ImGui::TextWrapped ("%s", SK_GetLicenseText (IDR_LICENSE_OVERVIEW).c_str ());
@@ -307,14 +306,11 @@ SK_ImGui_DrawEULA (LPVOID reserved)
     ImGui::TreePop    ();
     ImGui::NextColumn ();
 
-    if (! pirate)
-    {
-      ImGui::Checkbox ("I agree ... never show me this again!", &((show_eula_s *)reserved)->never_show_again);
-    }
+    ImGui::Checkbox ("I agree ... never show me this again!", &((show_eula_s *)reserved)->never_show_again);
 
     ImGui::SameLine ();
 
-    if (ImGui::Button (" Accept ") && (! pirate))
+    if (ImGui::Button (" Accept "))
     {
       ImGui::CloseCurrentPopup ();
 
@@ -329,22 +325,6 @@ SK_ImGui_DrawEULA (LPVOID reserved)
         config_name = L"SpecialK";
 
       SK_SaveConfig (config_name);
-    }
-
-    if (pirate && ImGui::IsItemHovered ())
-    {
-      ImGui::BeginTooltip ();
-
-      ImGui::TextColored (ImColor (255,255,255), "Read the Yellow Text");
-      ImGui::Separator   ();
-      ImGui::BulletText  ("Please use the other button, you already broke the terms.");
-      ImGui::BulletText  ("You may be able to find a modified version with these terms removed");
-      ImGui::TreePush    ("");
-      ImGui::TextWrapped ("The authors listed above are not responsible for said modified version and will not "
-                          "provide you support no matter how much you make life difficult for them.");
-      ImGui::TreePop     ();
-
-      ImGui::EndTooltip  ();
     }
 
     ImGui::EndGroup ();

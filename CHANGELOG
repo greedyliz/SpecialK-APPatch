@@ -192,7 +192,6 @@
  + Added Shader Disassembly View (D3D11)
  + Added option to disable DebugBreak (...) in kernel32.dll
  + Added fix for incorrectly packed compressed DDS textures
- + Remove Malware detection, I have no intention to maintain that feature
 
 0.8.12.3:
 
@@ -232,7 +231,6 @@
  + Disabled relative mouse move in NieR: Automata - it always sends legacy input
  + Fixed problems dispatching keyboard input early from PeekMessage caused
      in Mass Effect: Andromeda
- + Added pirate tooltips to EULA ;)
  + Added resolution warning to EULA screen
  + Fixed license text truncation on EULA screen
  + Added code to compensate for games that pull WM_KEYDOWN messages out of the

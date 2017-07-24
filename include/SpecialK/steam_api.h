@@ -413,17 +413,6 @@ public:
       return false;
     }
 
-    // Blacklist of people not allowed to use my software (for being disruptive to other users)
-      uint32_t aid = user_->GetSteamID ().GetAccountID    ();
-    //uint64_t s64 = user_->GetSteamID ().ConvertToUint64 ();
-
-    if ( aid ==  64655118 || aid == 183437803 )
-    {
-      SK_MessageBox ( L"You are not authorized to use this software",
-                        L"Unauthorized User", MB_ICONWARNING | MB_OK );
-      ExitProcess (0x00);
-    }
-
     friends_ =
       client_->GetISteamFriends (
         hSteamUser,

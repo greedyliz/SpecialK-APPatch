@@ -290,7 +290,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
     <TargetName>SpecialK64</TargetName>
-    <OutDir>C:\Users\Andon\Documents\My Mods\SpecialK\</OutDir>
+    <OutDir>$(SolutionDir)build\$(Configuration)\x64\</OutDir>
     <IntDir>$(SolutionDir)build\$(Configuration)\x64\</IntDir>
     <IncludePath>$(SolutionDir)include;$(VC_IncludePath);$(WindowsSDK_IncludePath);$(SolutionDir)\depends\include;$(SolutionDir)\depends\build\x64;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(SolutionDir)include\SpecialK;$(WindowsSdk_71A_IncludePath)</IncludePath>
     <LibraryPath>$(LibraryPath);$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(NETFXKitsDir)Lib\um\x64;$(SolutionDir)\depends\lib;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Lib\x64;$(WindowsSdk_71A_LibraryPath_x64)</LibraryPath>
@@ -301,7 +301,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Installer|x64'">
     <LinkIncremental>false</LinkIncremental>
     <TargetName>Installer64</TargetName>
-    <OutDir>C:\Users\Andon\Documents\My Mods\SpecialK\</OutDir>
+    <OutDir>$(SolutionDir)build\$(Configuration)\x64\</OutDir>
     <IntDir>$(SolutionDir)build\$(Configuration)\x64\</IntDir>
     <IncludePath>$(SolutionDir)include;$(VC_IncludePath);$(WindowsSDK_IncludePath);$(SolutionDir)\depends\include;$(SolutionDir)\depends\build\x64;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(SolutionDir)include\SpecialK</IncludePath>
     <LibraryPath>$(LibraryPath);$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(NETFXKitsDir)Lib\um\x64;$(SolutionDir)\depends\lib;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Lib\x64</LibraryPath>
@@ -309,7 +309,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='TZFix|x64'">
     <LinkIncremental>false</LinkIncremental>
     <TargetName>SpecialK64</TargetName>
-    <OutDir>C:\Users\Andon\Documents\My Mods\SpecialK\</OutDir>
+    <OutDir>$(SolutionDir)build\$(Configuration)\x64\</OutDir>
     <IntDir>$(SolutionDir)build\$(Configuration)\x64\</IntDir>
     <IncludePath>$(SolutionDir)include;$(VC_IncludePath);$(WindowsSDK_IncludePath);$(SolutionDir)\depends\include;$(SolutionDir)\depends\build\x64;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(SolutionDir)include\SpecialK</IncludePath>
     <LibraryPath>$(LibraryPath);$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(NETFXKitsDir)Lib\um\x64;$(SolutionDir)\depends\lib;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Lib\x64</LibraryPath>
@@ -317,7 +317,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='TBFix|x64'">
     <LinkIncremental>false</LinkIncremental>
     <TargetName>d3d9</TargetName>
-    <OutDir>C:\Program Files (x86)\Steam\steamapps\common\Tales of Berseria\</OutDir>
+    <OutDir>$(SolutionDir)build\$(Configuration)\x64\</OutDir>
     <IntDir>$(SolutionDir)build\$(Configuration)\x64\</IntDir>
     <IncludePath>$(SolutionDir)include;$(VC_IncludePath);$(WindowsSDK_IncludePath);$(SolutionDir)\depends\include;$(SolutionDir)\depends\build\x64;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(SolutionDir)include\SpecialK</IncludePath>
     <LibraryPath>$(LibraryPath);$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(NETFXKitsDir)Lib\um\x64;$(SolutionDir)\depends\lib;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Lib\x64</LibraryPath>
@@ -325,7 +325,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='FAR|x64'">
     <LinkIncremental>false</LinkIncremental>
     <TargetName>dinput8</TargetName>
-    <OutDir>C:\Program Files (x86)\Steam\steamapps\common\NieRAutomata\</OutDir>
+    <OutDir>$(SolutionDir)build\$(Configuration)\x64\</OutDir>
     <IntDir>$(SolutionDir)build\$(Configuration)\x64\</IntDir>
     <IncludePath>$(SolutionDir)include;$(VC_IncludePath);$(WindowsSDK_IncludePath);$(SolutionDir)\depends\include;$(SolutionDir)\depends\build\x64;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(SolutionDir)include\SpecialK</IncludePath>
     <LibraryPath>$(LibraryPath);$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(NETFXKitsDir)Lib\um\x64;$(SolutionDir)\depends\lib;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Lib\x64</LibraryPath>
@@ -333,7 +333,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='UnX|x64'">
     <LinkIncremental>false</LinkIncremental>
     <TargetName>dxgi</TargetName>
-    <OutDir>C:\Program Files (x86)\Steam\steamapps\common\NieRAutomata\</OutDir>
+    <OutDir>$(SolutionDir)build\$(Configuration)\x64\</OutDir>
     <IntDir>$(SolutionDir)build\$(Configuration)\x64\</IntDir>
     <IncludePath>$(SolutionDir)include;$(VC_IncludePath);$(WindowsSDK_IncludePath);$(SolutionDir)\depends\include;$(SolutionDir)\depends\build\x64;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(SolutionDir)include\SpecialK</IncludePath>
     <LibraryPath>$(LibraryPath);$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(NETFXKitsDir)Lib\um\x64;$(SolutionDir)\depends\lib;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Lib\x64</LibraryPath>

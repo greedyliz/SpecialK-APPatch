@@ -2300,12 +2300,6 @@ SK_BeginBufferSwap (void)
 
   if (hModTBFix)
   {
-    if (SK_Steam_PiratesAhoy () != 0x00)
-    {
-      extern float target_fps;
-      target_fps = (float)*(uint8_t*)(szFirst+5);
-    }
-
     SK::Framerate::GetLimiter ()->wait ();
   }
 
@@ -2314,8 +2308,7 @@ SK_BeginBufferSwap (void)
   extern uint32_t WINAPI SK_Steam_PiratesAhoy (void);
   if (SK_Steam_PiratesAhoy () && (! SK_ImGui_Visible))
   {
-    extern void SK_ImGui_Toggle (void);
-                SK_ImGui_Toggle ();
+	
   }
 
   extern void SK_ImGui_PollGamepad_EndFrame (void);

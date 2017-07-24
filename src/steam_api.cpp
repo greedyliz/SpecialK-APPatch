@@ -650,44 +650,6 @@ SK_SteamAPIContext::OnVarChange (SK_IVariable* var, void* val)
  
   bool known = false;
 
-  // ( Dead man's switch for silly pirates that attempt to bypass framerate limit
-  //    with a hex edit rather than a proper forked project - "crack" this the right way please )
-  if (var == tbf_pirate_fun)
-  {
-    known = true;
-
-    static float history [4] = { 45.0f, 45.0f, 45.0f, 45.0f };
-    static int   idx         = 0;
-
-    history [idx] = *(float *)val;
-
-    if (*(float *)val != 45.0f)
-    {
-      if (idx > 0 && history [idx-1] != 45.0f)
-      {
-        const SK_IVariable* var =
-          SK_GetCommandProcessor ()->ProcessCommandLine (
-            "Textures.LODBias"
-          ).getVariable ();
-        
-        if (var != nullptr)
-        {
-          *(float *)var->getValuePointer () = *(float *)val;
-        }
-      }
-    }
-
-    idx++;
-
-    if (idx > 3)
-      idx = 0;
-
-    tbf_float = 0.0001f;
-
-    return true;
-  }
-
-
   if (var == notify_corner)
   {
     known = true;
@@ -3191,8 +3153,6 @@ SK_Steam_InitCommandConsoleVariables (void)
 
   steam_ctx.notify_corner = SK_CreateVar (SK_IVariable::String, steam_ctx.var_strings.notify_corner, &steam_ctx);
   cmd->AddVariable ("Steam.NotifyCorner",   steam_ctx.notify_corner);
-
-  steam_ctx.tbf_pirate_fun = SK_CreateVar (SK_IVariable::Float, &steam_ctx.tbf_float, &steam_ctx);
 }
 
 DWORD
@@ -3770,63 +3730,7 @@ SK_SteamAPI_Utils (void)
 
 
 //
-// ATTENTION PIRATES:  Forking Special K and circumventing this is 99% of the work you need
-// ------------------    to do to "crack" my mods. The remaining 1% involves removing my name.
-//
-//
-//  You will find various measures scattered throughout the code that took me all of five
-//    minutes to devise whose intention is to make any attempt to do something other than
-//      modify the source code fail.
-//
-//  >> TBFix, for example, will throw up a HUGE positive LOD bias causing blurry textures if
-//       the framerate limit restriction is bypassed with a simple hex edit.
-//
-//  Please refrain from simply binary-editing one of my distributions, if you have the skill to
-//    circumvent DRM it should be obvious that I intend every one of my measures to be plainly
-//      visible and should take you thirty-seconds to figure out and remove the correct way.
-//
-//
-//
-//  "Proper" (lol) Redistribution for Illegal Purposes (which I do not condone) follows:
-//  ------------------------------------------------------------------------------------
-//
-//    1.  Fork the C++ code, make your changes public for the decency of your community
-//    2.  Remove my name if you are going to distribute your modification in anything illegal
-//    3.  Stop accusing me of distributing malware, you rarely even honor bullet-point #1
-//
-//
-//
-//  Common Sense Practices it Frequently Astounds me that you Ignore:
-//  -----------------------------------------------------------------
-//
-//   (*) Disable SteamAPI enhancement, most of the stuff you complain about isn't even a problem
-//        if you would simply turn SteamAPI features off.
-//
-//    >> Your fake SteamAPI implementations are fragile, and I sure as hell have no intention to
-//         test against them or fix them.
-//
-//    >> Opt-out of Steam-related enhancement if you care about stability.
-//
-//
-//   (*) Do not grab the latest version of my mod and shoe-horn it into your cracked binary
-//
-//    >> I maintain forward-compatibility for the benefit of the paying Steam community,
-//         you need the opposite since your executable never receives updates.
-//
-//    >> I remove fixes for stuff that the publisher has already fixed, you get nothing from
-//         following my update schedule when your executable has its own set of problems that
-//           are not addressed by new versions of the software.
-//
-//
-//  The feature that deletes files is for the benefit of people who "upgrade" from pirated to
-//  legit and swear up and down they are continuing to be detected as a pirate. Don't click that
-//  button unless you are a legitimate user who upgraded and has remnant illegal files lingering.
-//
-//
-//-----------------------------------------------------------------------------------------------
-//    Remove my name from any forked work, and stop making your community look like a bunch of
-//      children; it reflects poorly on the whole of PC gaming.
-//-----------------------------------------------------------------------------------------------
+// Blah blah blah
 //
 static uint32_t        verdict        = 0x00;
 static bool            decided        = false;
@@ -3849,86 +3753,7 @@ uint32_t
 __stdcall
 SK_Steam_PiratesAhoy (void)
 {
-#if 0
-  if (validation_pass != SK_Steam_FileSigPass_e::Done)
-  {
-    if ( InterlockedCompareExchange (&hAsyncSigCheck, 1, 0) == 0 && steam_ctx.Utils () != nullptr && (! config.steam.silent) )
-    {
-      switch (validation_pass)
-      {
-        case SK_Steam_FileSigPass_e::Executable:
-        {
-          InterlockedExchange (&hAsyncSigCheck,
-            steam_ctx.Utils ()->CheckFileSignature (SK_WideCharToUTF8 (SK_GetHostApp ()).c_str ()));
-        } break;
-
-        case SK_Steam_FileSigPass_e::SteamAPI:
-        {
-          char szRelSteamAPI [MAX_PATH * 2] = { };
-
-          // Generally, though not always (i.e. CSteamWorks) we will link against one of these two DLLs
-          //
-          //   The actual DLL used is pulled from the IAT during init, but I am too lazy to bother doing
-          //     this the right way ;)
-#ifdef _WIN64
-          snprintf ( szRelSteamAPI, MAX_PATH * 2 - 1, "%ws\\steam_api64.dll",
-                       SK_GetHostPath () );
-#else
-          snprintf ( szRelSteamAPI, MAX_PATH * 2 - 1, "%ws\\steam_api.dll",
-                       SK_GetHostPath () );
-#endif
-          InterlockedExchange (&hAsyncSigCheck,
-            steam_ctx.Utils ()->CheckFileSignature (szRelSteamAPI));
-        } break;
-      }
-
-      steam_ctx.chk_file_sig.Set (
-        hAsyncSigCheck,
-          &steam_ctx,
-            &SK_SteamAPIContext::OnFileSigDone );
-    }
-  }
-#endif
-
-  if (decided)
-  {
-    return verdict;
-  }
-
-#ifdef _WIN64
-  static uint32_t crc32_steamapi =
-    SK_GetFileCRC32C (L"steam_api64.dll");
-#else
-  static uint32_t crc32_steamapi =
-    SK_GetFileCRC32C (L"steam_api.dll");
-#endif
-
-  if (SK::SteamAPI::steam_size > 0 && SK::SteamAPI::steam_size < (1024 * 92))
-  {
-    verdict = 0x68992;
-  }
-
-  // CPY
-  if (steam_ctx.User () != nullptr)
-  {
-    if ( steam_ctx.User ()->GetSteamID ().ConvertToUint64 () == 18295873490452480 << 4 ||
-         steam_ctx.User ()->GetSteamID ().ConvertToUint64 () == 25520399320093309  * 3 )
-      verdict = 0x1;
-  }
-
-  if (crc32_steamapi == 0x28140083 << 1)
-    verdict = crc32_steamapi;
-
-  decided = true;
-
-  // User opted out of Steam enhancement, no further action necessary
-  if (config.steam.silent && verdict)
-  {
-    validation_pass = SK_Steam_FileSigPass_e::Done;
-    verdict         = 0x00;
-  }
-
-  return verdict;
+  return 0x00;
 }
 
 uint32_t
@@ -3942,86 +3767,6 @@ void
 SK_SteamAPIContext::OnFileSigDone ( CheckFileSignature_t* pParam,
                                     bool                  bFailed )
 {
-  ECheckFileSignature result =
-    bFailed ? k_ECheckFileSignatureNoSignaturesFoundForThisApp :
-              pParam->m_eCheckFileSignature;
-
-
-  auto HandleResult = [=](const wchar_t* wszFileName) ->
-    void
-    {
-      switch (result)
-      {
-        case k_ECheckFileSignatureNoSignaturesFoundForThisApp:
-        {
-          steam_log.Log ( L"> SteamAPI Application Signature Verification:  "
-                          L" No Signatures For This App" );
-        } break;
-
-        case k_ECheckFileSignatureNoSignaturesFoundForThisFile:
-        {
-          steam_log.Log ( L"> SteamAPI Application Signature Verification:  "
-                          L" No Signature For This App File :: '%ws'",
-                            wszFileName );
-        } break;
-
-        case k_ECheckFileSignatureFileNotFound:
-        {
-          steam_log.Log ( L"> SteamAPI Application Signature Verification:  "
-                          L" Signature File Not Found :: '%ws'",
-                            wszFileName );
-        } break;
-
-        case k_ECheckFileSignatureInvalidSignature:
-        {
-          steam_log.Log ( L"> SteamAPI Application Signature Verification:  "
-                          L" INVALID File Signature :: '%ws'",
-                            wszFileName );
-          if ( validation_pass == SK_Steam_FileSigPass_e::SteamAPI ||
-               validation_pass == SK_Steam_FileSigPass_e::DLC )
-          {
-            verdict |= ~( k_ECheckFileSignatureInvalidSignature );
-            decided  =    true;
-          }
-        } break;
-
-        case k_ECheckFileSignatureValidSignature:
-        {
-          steam_log.Log ( L"> SteamAPI Application Signature Verification:  "
-                          L" VALID File Signature :: '%ws'",
-                            wszFileName );
-        } break;
-
-        default:
-        {
-          steam_log.Log ( L"> SteamAPI Application Signature Verification:  "
-                          L" UNKNOWN STATUS (%lu) :: '%ws'",
-                            result, wszFileName );
-        } break;
-      }
-    };
-
-
-  switch (validation_pass)
-  {
-    case SK_Steam_FileSigPass_e::Executable:
-    {
-      HandleResult (SK_GetHostApp ());
-
-      validation_pass = SK_Steam_FileSigPass_e::SteamAPI;
-      InterlockedExchange (&hAsyncSigCheck, 0);
-    } break;
-
-    case SK_Steam_FileSigPass_e::SteamAPI:
-    {
-      HandleResult (L"SteamAPI");
-
-      validation_pass = SK_Steam_FileSigPass_e::Done;
-      InterlockedExchange (&hAsyncSigCheck, 0);
-    } break;
-  }
-
-
   chk_file_sig.Cancel ();
 }
 

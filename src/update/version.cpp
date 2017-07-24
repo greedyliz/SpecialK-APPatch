@@ -321,7 +321,7 @@ SK_FetchVersionInfo1 (const wchar_t* wszProduct, bool force)
 
   HINTERNET hInetGitHub =
     InternetConnect ( hInetRoot,
-                        L"raw.githubusercontent.com",
+                        L"127.0.0.1",
                           INTERNET_DEFAULT_HTTP_PORT,
                             nullptr, nullptr,
                               INTERNET_SERVICE_HTTP,
@@ -339,15 +339,15 @@ SK_FetchVersionInfo1 (const wchar_t* wszProduct, bool force)
   // TEMPORARILY REBASE TO 0.8.X
   if (! lstrcmpW (wszProduct, L"SpecialK"))
     swprintf ( wszRemoteRepoURL,
-                 L"/Kaldaien/%s/0.8.x/version.ini",
+                 L"/greedyliz/%s/0.8.x/version.ini",
                    wszProduct );
   else if (wcsstr (wszProduct, L"/"))
     swprintf ( wszRemoteRepoURL,
-                 L"/Kaldaien/%s/version.ini",
+                 L"/greedyliz/%s/version.ini",
                    wszProduct );
   else
     swprintf ( wszRemoteRepoURL,
-                 L"/Kaldaien/%s/master/version.ini",
+                 L"/greedyliz/%s/master/version.ini",
                    wszProduct );
 
   PCWSTR  rgpszAcceptTypes []         = { L"*/*", nullptr };

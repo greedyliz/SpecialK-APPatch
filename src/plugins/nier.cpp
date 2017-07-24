@@ -1,5 +1,5 @@
 //
-// Copyright 2017  Andon  "Kaldaien" Coleman,
+// Copyright 2017  Greedy "greedyliz" Lizzie,
 //                 Niklas "DrDaxxy"  Kielblock,
 //                 Peter  "Durante"  Thoman
 //
@@ -1625,7 +1625,7 @@ SK_FAR_EULA_Insert (LPVOID reserved)
 
   if (ImGui::CollapsingHeader ("FAR (Fix Automata Resolution)", ImGuiTreeNodeFlags_DefaultOpen))
   {
-    ImGui::TextWrapped ( " Copyright 2017  Andon  \"Kaldaien\" Coleman,\n"
+    ImGui::TextWrapped ( " Copyright 2017  Greedy \"greedyliz\" Lizzie,\n"
                          "                 Niklas \"DrDaxxy\" Kielblock,\n"
                          "                 Peter  \"Durante\" Thoman\n"
                          "\n"

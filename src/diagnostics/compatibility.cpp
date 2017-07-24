@@ -1160,7 +1160,7 @@ SK_ThreadWalkModules (enum_working_set_s* pWorkingSet)
   {
     wchar_t wszModName [MAX_PATH + 2] = { };
 
-    __try
+    try
     {
       // Get the full path to the module's file.
       if ( (! logged_modules.count (pWorkingSet->modules [i])) &&
@@ -1190,7 +1190,7 @@ SK_ThreadWalkModules (enum_working_set_s* pWorkingSet)
       }
     }
 
-    __except ( EXCEPTION_EXECUTE_HANDLER )
+    catch(...)
     {
       // Sometimes a DLL will be unloaded in the middle of doing this... just ignore that.
     }

@@ -1098,12 +1098,7 @@ SK_ImGui_ControlPanel (void)
 
       //ImGui::MenuItem ("Special K Documentation (Work in Progress)", "Ctrl + Shift + Nul", &selected, false);
 
-      ImGui::TreePush ("");
-      {
-        if (ImGui::MenuItem ("\"Kaldaien's Mod\"", "Steam Group", &selected, true))
-          SK_SteamOverlay_GoToURL ("http://steamcommunity.com/groups/SpecialK_Mods", true);
-      }
-      ImGui::TreePop ();
+      ImGui::MenuItem ("\"greedyliz's Mod\"");
 
       ImGui::Separator ();
 
@@ -3929,25 +3924,12 @@ extern float SK_ImGui_PulseNav_Strength;
         valid = valid && (! SK_Steam_PiratesAhoy ());
 
         if (valid)
-          ImGui::MenuItem ("I am not a pirate!", "", &valid, false);
+          ImGui::MenuItem ("Piracy not detected!", "", &valid, false);
         else
         {
-          ImGui::MenuItem (u8"I am an irreverent pirate moron™", "", &valid, false);
+          ImGui::MenuItem (u8"SpecialK wants you to walk the plank!", "", &valid, false);
           {
-            // Delete the CPY config, and push user back onto legitimate install,
-            //   to prevent repeated pirate detection.
-            //
-            //  If stupid user presses this button for any other reason, that is
-            //    their own problem. Crackers should make a better attempt to
-            //      randomize their easily detectable hackjobs.
-            if (GetFileAttributes (L"CPY.ini") != INVALID_FILE_ATTRIBUTES)
-            {
-              DeleteFileW (L"CPY.ini");
-              
-              MoveFileW   (L"steam_api64.dll",   L"CPY.ini");
-              MoveFileW   (L"steamclient64.dll", L"steam_api64.dll");
-              MoveFileW   (L"CPY.ini",           L"steamclient64.dll");
-            }
+			
           }
         }
 
@@ -4369,21 +4351,6 @@ SK_ImGui_Toggle (void)
   auto EnableEULAIfPirate = [](void) ->
     bool
     {
-      bool pirate = ( SK_SteamAPI_AppID    () != 0 && 
-                      SK_Steam_PiratesAhoy () != 0x0 );
-      if (pirate)
-      {
-        if (dwLastTime < timeGetTime () - 1000)
-        {
-          dwLastTime             = timeGetTime ();
-
-          eula.show              = true;
-          eula.never_show_again  = false;
-
-          return true;
-        }
-      }
-
       return false;
     };
 
@@ -4415,9 +4382,6 @@ SK_ImGui_Toggle (void)
         {
           //SK_ImGui_Cursor.showImGuiCursor ();
 
-          if (EnableEULAIfPirate ())
-            config.imgui.show_eula = true;
-
           static bool first = true;
 
           if (first)
@@ -4428,15 +4392,7 @@ SK_ImGui_Toggle (void)
           }
         }
       }
-
-      // TBFix
-      else
-        EnableEULAIfPirate ();
     }
-
-    // TZFix
-    else
-      EnableEULAIfPirate ();
 
     if (SK_ImGui_Visible)
       SK_Console::getInstance ()->visible = false;
