@@ -1,3 +1,6 @@
+SpecialK game fixing framework - Patched to remove anti-piracy checks.
+Author's name changed at request.
+
 # SpecialK
 Core systems used by all of my mods
 
