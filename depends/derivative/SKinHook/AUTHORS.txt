@@ -1,7 +1,7 @@
 Tsuda Kageyu <tsuda.kageyu@gmail.com>
  Creator, maintainer
 
-Andon Coleman <amcolema@eagle.fgcu.edu>
+Greedy Lizzie <15964012+greedyliz@users.noreply.github.com>
  Formally added hook introspection
 
 Michael Maltsev <leahcimmar@gmail.com>
