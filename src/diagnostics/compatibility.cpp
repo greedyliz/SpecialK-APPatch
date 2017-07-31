@@ -153,9 +153,11 @@ BlacklistLibrary (const _T* lpFileName)
 {
 #pragma push_macro ("StrStrI")
 #pragma push_macro ("GetModuleHandleEx")
+#pragma push_macro ("LoadLibrary")
 
 #undef StrStrI
 #undef GetModuleHandleEx
+#undef LoadLibrary
 
   static StrStrI_pfn            StrStrI =
     (StrStrI_pfn)
@@ -167,28 +169,55 @@ BlacklistLibrary (const _T* lpFileName)
       constexpr LPCVOID ( std::type_index (typeid (_T)) == std::type_index (typeid (wchar_t)) ? (GetModuleHandleEx_pfn) &GetModuleHandleExW : 
                                                                                                 (GetModuleHandleEx_pfn) &GetModuleHandleExA );
 
+  static LoadLibrary_pfn  LoadLibrary =
+    (LoadLibrary_pfn)
+      constexpr LPCVOID ( std::type_index (typeid (_T)) == std::type_index (typeid (wchar_t)) ? (LoadLibrary_pfn) &LoadLibraryW_Detour : 
+                                                                                                (LoadLibrary_pfn) &LoadLibraryA_Detour );
+
 
 #ifdef _WIN64
   if (StrStrI (lpFileName, SK_TEXT("action_x64")))
   {
     WaitForInit ();
 
-    while (SK_GetFramesDrawn () < 6) SleepEx (666, TRUE);
+    while (SK_GetFramesDrawn () < 2) SleepEx (8, FALSE);
   }
 #else
   if (StrStrI (lpFileName, SK_TEXT("action_x86")))
   {
     WaitForInit ();
 
-    while (SK_GetFramesDrawn () < 6) SleepEx (666, TRUE);
+    while (SK_GetFramesDrawn () < 2) SleepEx (8, FALSE);
   }
 #endif
+
+  //else if (StrStrI (lpFileName, SK_TEXT("rxcore")) || StrStrI (lpFileName, SK_TEXT("nvinject")) || StrStrI (lpFileName, SK_TEXT("detoured")) || StrStrI (lpFileName, SK_TEXT("rxinput")))
+  //{
+  //  if (SK_GetFramesDrawn () < 2)
+  //  {
+  //    CreateThread (nullptr, 0, [](LPVOID user) -> DWORD {
+  //      WaitForInit ();
+  //      
+  //      while (SK_GetFramesDrawn () < 2) SleepEx (133, FALSE);
+  //  
+  //      LoadLibrary (user);
+  //  
+  //      free (user);
+  //  
+  //      CloseHandle (GetCurrentThread ());
+  //  
+  //      return 0;
+  //    }, (LPVOID)_wcsdup ((const wchar_t *)lpFileName), 0x00, nullptr);
+  //  
+  //    return FALSE;
+  //  }
+  //}
 
   else if (StrStrI (lpFileName, SK_TEXT("RTSSHooks")))
   {
     WaitForInit ();
 
-    while (SK_GetFramesDrawn () < 4) SleepEx (250, TRUE);
+    while (SK_GetFramesDrawn () < 1) SleepEx (75, FALSE);
   }
 
 
@@ -218,12 +247,14 @@ BlacklistLibrary (const _T* lpFileName)
       nv_blacklist.emplace_back (SK_TEXT("rxcore.dll"));
       nv_blacklist.emplace_back (SK_TEXT("nvinject.dll"));
       nv_blacklist.emplace_back (SK_TEXT("rxinput.dll"));
+#if 0
 #ifdef _WIN64
       nv_blacklist.emplace_back (SK_TEXT("nvspcap64.dll"));
       nv_blacklist.emplace_back (SK_TEXT("nvSCPAPI64.dll"));
 #else
       nv_blacklist.emplace_back (SK_TEXT("nvspcap.dll"));
       nv_blacklist.emplace_back (SK_TEXT("nvSCPAPI.dll"));
+#endif
 #endif
       init = true;
     }
@@ -246,6 +277,7 @@ BlacklistLibrary (const _T* lpFileName)
 
 #pragma pop_macro ("StrStrI")
 #pragma pop_macro ("GetModuleHandleEx")
+#pragma pop_macro ("LoadLibrary")
 }
 
 
@@ -1126,35 +1158,61 @@ _SK_SummarizeModule ( LPVOID   base_addr,  size_t      mod_size,
                       HMODULE  hMod,       uintptr_t   addr,
                       wchar_t* wszModName, iSK_Logger* pLogger )
 {
-  char  szSymbol [1024] = { };
-  ULONG ulLen  =  1024;
+  char  szSymbol [512] = { };
+  ULONG ulLen  =  511;
 
-  ulLen = SK_GetSymbolNameFromModuleAddr (hMod, addr, szSymbol, ulLen);
-  
+  ulLen =
+    SK_GetSymbolNameFromModuleAddr (hMod, addr, szSymbol, ulLen);
+
   if (ulLen != 0) {
-    pLogger->Log ( L"[ Module ]  ( %ph + %08lu )   -:< %-64hs >:-   %s",
-                      (void *)base_addr, (uint32_t)mod_size,
-                        szSymbol, wszModName );
+    pLogger->Log ( L"[ Module ]  ( %ph + %08u )   -:< %-64hs >:-   %s",
+                    (void *)base_addr, (uint32_t)mod_size,
+                      szSymbol, wszModName );
   } else {
-    pLogger->Log ( L"[ Module ]  ( %ph + %08li )       %-64hs       %s",
-                      base_addr, mod_size, "", wszModName );
+    pLogger->Log ( L"[ Module ]  ( %ph + %08i )       %-64hs       %s",
+                    (void *)base_addr, (int32_t)mod_size,
+                      "", wszModName );
   }
 
-  std::wstring ver_str = SK_GetDLLVersionStr (wszModName);
+  std::wstring ver_str =
+    SK_GetDLLVersionStr (wszModName);
 
-  if (ver_str != L"  ") {
-    pLogger->LogEx ( false,
-      L" ----------------------  [File Ver]    %s\n",
+  if (ver_str != L"  ")
+  {
+    pLogger->LogEx ( true,
+      L"[File Ver]    %s\n",
         ver_str.c_str () );
   }
+
+  pLogger->LogEx (false, L"\n");
 }
 
 void
 SK_ThreadWalkModules (enum_working_set_s* pWorkingSet)
 {
+CreateThread (nullptr, 0, [](LPVOID user) -> DWORD
+{
+  static bool             init           = false;
+  static CRITICAL_SECTION cs_thread_walk = { };
+
+  if (! init)
+  {
+    InitializeCriticalSection (&cs_thread_walk);
+    init = true;
+  }
+
+
   SK_LockDllLoader ();
 
-  iSK_Logger* pLogger = pWorkingSet->logger;
+  EnterCriticalSection (&cs_thread_walk);
+
+  enum_working_set_s* pWorkingSet =
+    (enum_working_set_s *)malloc (sizeof (enum_working_set_s));
+
+  memcpy (pWorkingSet, user, sizeof (enum_working_set_s));
+
+  iSK_Logger* pLogger =
+    pWorkingSet->logger;
 
   for (int i = 0; i < pWorkingSet->count; i++ )
   {
@@ -1198,7 +1256,16 @@ SK_ThreadWalkModules (enum_working_set_s* pWorkingSet)
 
   CloseHandle (pWorkingSet->proc);
 
-  SK_UnlockDllLoader ();
+  LeaveCriticalSection (&cs_thread_walk);
+  SK_UnlockDllLoader   ();
+
+  free (pWorkingSet);
+
+
+  CloseHandle (GetCurrentThread ());
+
+  return 0;
+}, (LPVOID)pWorkingSet, 0x00, nullptr);
 }
 
 void
@@ -1411,6 +1478,8 @@ SK_EnumLoadedModules (SK_ModuleEnum when)
     return;
   }
 
+  if (pLogger != nullptr) pLogger->flush_freq = 0;
+
   if ( when   == SK_ModuleEnum::PostLoad &&
       pLogger != nullptr )
   {
@@ -1418,7 +1487,7 @@ SK_EnumLoadedModules (SK_ModuleEnum when)
       false,
         L"================================================================== "
         L"(End Preloads) "
-        L"==================================================================\n"
+        L"==================================================================\n\n"
     );
   }
 

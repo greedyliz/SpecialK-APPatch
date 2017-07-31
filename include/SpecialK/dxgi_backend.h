@@ -61,6 +61,18 @@
   }                                                                           \
 }
 
+#define DXGI_VIRTUAL_HOOK_IMM(_Base,_Index,_Name,_Override,_Original,_Type) { \
+  void** _vftable = *(void***)*(_Base);                                       \
+                                                                              \
+  /*if ((_Original) == nullptr) {                                               */\
+    SK_CreateVFTableHook ( L##_Name,                                         \
+                             _vftable,                                       \
+                               (_Index),                                     \
+                                 (_Override),                                \
+                                   (LPVOID *)&(_Original));                  \
+  /*}*/                                                                      \
+}
+
 #define DXGI_VIRTUAL_HOOK(_Base,_Index,_Name,_Override,_Original,_Type) {     \
   void** _vftable = *(void***)*(_Base);                                       \
                                                                               \
@@ -337,7 +349,27 @@ class SK_D3D11_TexMgr {
 public:
   SK_D3D11_TexMgr (void) {
     QueryPerformanceFrequency (&PerfFreq);
-    HashMap_2D.resize (32);
+    HashMap_2D.resize   (32);
+    Blacklist_2D.resize (32);
+
+    TexRefs_2D.reserve       (8192);
+    Textures_2D.reserve      (8192);
+    HashMap_2D [ 1].reserve  ( 512);
+    HashMap_2D [ 2].reserve  ( 128);
+    HashMap_2D [ 3].reserve  (1024);
+    HashMap_2D [ 4].reserve  ( 512);
+    HashMap_2D [ 5].reserve  ( 256);
+    HashMap_2D [ 6].reserve  ( 128);
+    HashMap_2D [ 7].reserve  (  64);
+    HashMap_2D [ 8].reserve  (  64);
+    HashMap_2D [ 9].reserve  ( 128);
+    HashMap_2D [10].reserve  ( 256);
+    HashMap_2D [11].reserve  ( 128);
+    HashMap_2D [12].reserve  (  64);
+    HashMap_2D [13].reserve  (  32);
+    HashMap_2D [14].reserve  (  16);
+    HashMap_2D [15].reserve  (   8);
+    HashMap_2D [16].reserve  (   4);
   }
 
   bool             isTexture2D  (uint32_t crc32, const D3D11_TEXTURE2D_DESC *pDesc);
@@ -372,6 +404,9 @@ public:
                         uint32_t,
                         ID3D11Texture2D * >
                      >                        HashMap_2D;
+  std::vector        < std::unordered_set <
+                        uint32_t          >
+                     >                        Blacklist_2D;
 
   std::unordered_map < ID3D11Texture2D *,
                        tex2D_descriptor_s  >  Textures_2D;
@@ -396,7 +431,7 @@ typedef HRESULT (WINAPI *D3D11Dev_CreateSamplerState_pfn)(
 );
 typedef HRESULT (WINAPI *D3D11Dev_CreateTexture2D_pfn)(
   _In_            ID3D11Device           *This,
-  _In_  /*const*/ D3D11_TEXTURE2D_DESC   *pDesc,
+  _In_      const D3D11_TEXTURE2D_DESC   *pDesc,
   _In_opt_  const D3D11_SUBRESOURCE_DATA *pInitialData,
   _Out_opt_       ID3D11Texture2D        **ppTexture2D
 );

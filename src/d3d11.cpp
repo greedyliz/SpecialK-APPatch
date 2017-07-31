@@ -40,6 +40,7 @@ extern LARGE_INTEGER SK_QueryPerf (void);
 #include <SpecialK/tls.h>
 
 #include <algorithm>
+#include <memory>
 #include <atlbase.h>
 
 #include <d3d11.h>
@@ -91,12 +92,9 @@ void WaitForInitD3D11 (void)
 void  __stdcall SK_D3D11_TexCacheCheckpoint    ( void);
 bool  __stdcall SK_D3D11_TextureIsCached       ( ID3D11Texture2D*     pTex );
 void  __stdcall SK_D3D11_UseTexture            ( ID3D11Texture2D*     pTex );
-void  __stdcall SK_D3D11_RemoveTexFromCache    ( ID3D11Texture2D*     pTex );
+void  __stdcall SK_D3D11_RemoveTexFromCache    ( ID3D11Texture2D*     pTex, bool blacklist = false);
 
 void  __stdcall SK_D3D11_UpdateRenderStats     ( IDXGISwapChain*      pSwapChain );
-
-bool  __stdcall SK_D3D11_TextureIsCached       ( ID3D11Texture2D*     pTex );
-void  __stdcall SK_D3D11_RemoveTexFromCache    ( ID3D11Texture2D*     pTex );
 
 D3DX11CreateTextureFromFileW_pfn D3DX11CreateTextureFromFileW = nullptr;
 D3DX11GetImageInfoFromFileW_pfn  D3DX11GetImageInfoFromFileW  = nullptr;
@@ -145,7 +143,7 @@ IUnknown_Release (IUnknown* This)
   if (! SK_D3D11_IsTexInjectThread ())
   {
     ID3D11Texture2D* pTex = nullptr;
-    if (SUCCEEDED (This->QueryInterface (IID_PPV_ARGS (&pTex))))
+    if (SUCCEEDED (This->QueryInterface <ID3D11Texture2D> (&pTex)))
     {
       ULONG count = IUnknown_Release_Original (pTex);
 
@@ -217,7 +215,7 @@ SK_D3D11_SetDevice ( ID3D11Device           **ppDevice,
     CComPtr <IDXGIAdapter> pAdapter = nullptr;
 
     HRESULT hr =
-      (*ppDevice)->QueryInterface ( IID_PPV_ARGS (&pDXGIDev) );
+      (*ppDevice)->QueryInterface <IDXGIDevice> (&pDXGIDev);
 
     if ( SUCCEEDED ( hr ) )
     {
@@ -470,7 +468,7 @@ HRESULT
 WINAPI
 D3D11Dev_CreateTexture2D_Override (
 _In_            ID3D11Device           *This,
-_In_  /*const*/ D3D11_TEXTURE2D_DESC   *pDesc,
+_In_      const D3D11_TEXTURE2D_DESC   *pDesc,
 _In_opt_  const D3D11_SUBRESOURCE_DATA *pInitialData,
 _Out_opt_       ID3D11Texture2D        **ppTexture2D );
 
@@ -765,9 +763,9 @@ struct memory_tracking_s
   {
     history_s (void)
     {
-      vertex_buffers.reserve   ( 32);
-      index_buffers.reserve    ( 64);
-      constant_buffers.reserve (512);
+      vertex_buffers.reserve   ( 128);
+      index_buffers.reserve    ( 256);
+      constant_buffers.reserve (2048);
     }
 
     void clear (CRITICAL_SECTION* cs)
@@ -2571,7 +2569,7 @@ D3D11_UpdateSubresource_Override (
       {
         dll_log.Log (L"[DX11TexMgr] Cached texture was updated (UpdateSubresource)... removing from cache! - <%s>",
                        SK_GetCallerName ().c_str ());
-        SK_D3D11_RemoveTexFromCache (pTex);
+        SK_D3D11_RemoveTexFromCache (pTex, true);
       }
     }
   }
@@ -2639,7 +2637,7 @@ _Out_opt_ D3D11_MAPPED_SUBRESOURCE *pMappedResource )
           {
             dll_log.Log (L"[DX11TexMgr] Cached texture was updated... removing from cache! - <%s>",
                            SK_GetCallerName ().c_str ());
-            SK_D3D11_RemoveTexFromCache (pTex);
+            SK_D3D11_RemoveTexFromCache (pTex, true);
           }
 
           else
@@ -2801,7 +2799,7 @@ D3D11_CopyResource_Override (
       {
         dll_log.Log (L"[DX11TexMgr] Cached texture was modified (CopyResource)... removing from cache! - <%s>",
                        SK_GetCallerName ().c_str ());
-        SK_D3D11_RemoveTexFromCache (pDstTex);
+        SK_D3D11_RemoveTexFromCache (pDstTex, true);
       }
     }
   }
@@ -2908,7 +2906,7 @@ D3D11_CopySubresourceRegion_Override (
       {
         dll_log.Log (L"[DX11TexMgr] Cached texture was modified (CopySubresourceRegion)... removing from cache! - <%s>",
                        SK_GetCallerName ().c_str ());
-        SK_D3D11_RemoveTexFromCache (pDstTex);
+        SK_D3D11_RemoveTexFromCache (pDstTex, true);
       }
     }
   }
@@ -3401,11 +3399,11 @@ struct cache_params_t {
       bool ignore_non_mipped = false;
 } cache_opts;
 
-CRITICAL_SECTION tex_cs;
-CRITICAL_SECTION hash_cs;
-CRITICAL_SECTION dump_cs;
-CRITICAL_SECTION cache_cs;
-CRITICAL_SECTION inject_cs;
+CRITICAL_SECTION tex_cs    = { };
+CRITICAL_SECTION hash_cs   = { };
+CRITICAL_SECTION dump_cs   = { };
+CRITICAL_SECTION cache_cs  = { };
+CRITICAL_SECTION inject_cs = { };
 
 void WINAPI SK_D3D11_SetResourceRoot      (const wchar_t* root);
 void WINAPI SK_D3D11_EnableTexDump        (bool enable);
@@ -3545,12 +3543,15 @@ SK_D3D11_TexCacheCheckpoint (void)
 void
 SK_D3D11_TexMgr::reset (void)
 {
+  std::vector <ID3D11Texture2D*>                    cleared;
   std::vector <SK_D3D11_TexMgr::tex2D_descriptor_s> textures;
+
   textures.reserve (TexRefs_2D.size ());
 
   uint32_t count  = 0;
   int64_t  purged = 0;
 
+  {
   SK_AutoCriticalSection critical (&cache_cs);
   {
     for ( ID3D11Texture2D* tex : TexRefs_2D )
@@ -3620,6 +3621,8 @@ SK_D3D11_TexMgr::reset (void)
         HashMap_2D [desc.desc.MipLevels].erase (desc.crc32);
         Textures_2D.erase (desc.texture);
         TexRefs_2D.erase  (desc.texture);
+
+        cleared.push_back (desc.texture);
       }
 
       else
@@ -3627,10 +3630,26 @@ SK_D3D11_TexMgr::reset (void)
         desc.texture->Release ();
       }
     }
-  }
+  }}
 
   if (count > 0)
+  {
+#if 0
+    SK_AutoCriticalSection auto_cs (&cs_mmio);
+
+    for (auto tex : cleared)
+    {
+      if (mem_map_stats.lifetime.mapped_resources.count (tex))
+        mem_map_stats.lifetime.mapped_resources.erase   (tex);
+
+      if (mem_map_stats.last_frame.mapped_resources.count (tex))
+        mem_map_stats.last_frame.mapped_resources.erase   (tex);
+    }
+#endif
+
+
     InterlockedExchange (&live_textures_dirty, TRUE);
+  }
 }
 
 ID3D11Texture2D*
@@ -3761,7 +3780,7 @@ SK_D3D11_UseTexture (ID3D11Texture2D* pTex)
 
 void
 __stdcall
-SK_D3D11_RemoveTexFromCache (ID3D11Texture2D* pTex)
+SK_D3D11_RemoveTexFromCache (ID3D11Texture2D* pTex, bool blacklist)
 {
   if (! SK_D3D11_TextureIsCached (pTex))
     return;
@@ -3782,8 +3801,12 @@ SK_D3D11_RemoveTexFromCache (ID3D11Texture2D* pTex)
     pTex->GetDesc (&desc);
 
     SK_D3D11_Textures.Textures_2D.erase  (pTex);
-    SK_D3D11_Textures.HashMap_2D [desc.MipLevels].erase (crc32);
     SK_D3D11_Textures.TexRefs_2D.erase   (pTex);
+
+    //if (blacklist)
+    //  SK_D3D11_Textures.Blacklist_2D [desc.MipLevels].emplace (crc32);
+    //else
+      SK_D3D11_Textures.HashMap_2D   [desc.MipLevels].erase   (crc32);
 
     const int refs =
       IUnknown_AddRef_Original (pTex) - 1;
@@ -3798,6 +3821,19 @@ SK_D3D11_RemoveTexFromCache (ID3D11Texture2D* pTex)
 
     InterlockedExchange (&live_textures_dirty, TRUE);
   }
+
+#if 0
+  if (pTex != nullptr)
+  {
+    SK_AutoCriticalSection auto_cs3 (&cs_mmio);
+
+    if (mem_map_stats.lifetime.mapped_resources.count (pTex))
+      mem_map_stats.lifetime.mapped_resources.erase   (pTex);
+
+    if (mem_map_stats.last_frame.mapped_resources.count (pTex))
+      mem_map_stats.last_frame.mapped_resources.erase   (pTex);
+  }
+#endif
 }
 
 void
@@ -4187,8 +4223,6 @@ bool
 WINAPI
 SK_D3D11_IsTexHashed (uint32_t top_crc32, uint32_t hash)
 {
-  SK_D3D11_InitTextures ();
-
   SK_AutoCriticalSection critical (&hash_cs);
 
   if (tex_hashes_ex.count (crc32c (top_crc32, (const uint8_t *)&hash, 4)) != 0)
@@ -4205,9 +4239,6 @@ void
 WINAPI
 SK_D3D11_AddTexHash ( const wchar_t* name, uint32_t top_crc32, uint32_t hash )
 {
-  // Allow UnX to call this before a device has been created.
-  SK_D3D11_InitTextures ();
-
   if (hash != 0x00)
   {
     if (! SK_D3D11_IsTexHashed (top_crc32, hash))
@@ -4236,9 +4267,6 @@ void
 WINAPI
 SK_D3D11_RemoveTexHash (uint32_t top_crc32, uint32_t hash)
 {
-  // Allow UnX to call this before a device has been created.
-  SK_D3D11_InitTextures ();
-
   if (hash != 0x00 && SK_D3D11_IsTexHashed (top_crc32, hash))
   {
     SK_AutoCriticalSection critical (&hash_cs);
@@ -4255,9 +4283,6 @@ std::wstring
 __stdcall
 SK_D3D11_TexHashToName (uint32_t top_crc32, uint32_t hash)
 {
-  // Allow UnX to call this before a device has been created.
-  SK_D3D11_InitTextures ();
-
   std::wstring ret = L"";
 
   if (hash != 0x00 && SK_D3D11_IsTexHashed (top_crc32, hash))
@@ -4736,8 +4761,6 @@ crc32_ffx (  _In_      const D3D11_TEXTURE2D_DESC   *pDesc,
     compressed = true;
 
   int block_size = pDesc->Format == DXGI_FORMAT_BC1_UNORM ? 8 : 16;
-
-//int width      = pDesc->Width;
   int height     = pDesc->Height;
 
   size_t size = 0;
@@ -5172,8 +5195,16 @@ D3D11Dev_CreateShaderResourceView_Override (
   _In_opt_ const D3D11_SHADER_RESOURCE_VIEW_DESC  *pDesc,
   _Out_opt_      ID3D11ShaderResourceView        **ppSRView )
 {
+  const D3D11_SHADER_RESOURCE_VIEW_DESC* pDescOrig = pDesc;
+
   if (pDesc != nullptr)
   {
+    std::unique_ptr <D3D11_SHADER_RESOURCE_VIEW_DESC> pDescCopy (
+      new auto (*pDescOrig)
+    );
+
+    pDesc = pDescCopy.get ();
+
     DXGI_FORMAT newFormat = pDesc->Format;
 
     D3D11_SHADER_RESOURCE_VIEW_DESC desc = *pDesc;
@@ -5192,15 +5223,17 @@ D3D11Dev_CreateShaderResourceView_Override (
         pTex->GetDesc      (&tex_desc);
 
         if ( SK_D3D11_OverrideDepthStencil (newFormat) )
-          desc.Format = newFormat;
+          pDescCopy->Format = newFormat;
 
         HRESULT hr = D3D11Dev_CreateShaderResourceView_Original ( This, pResource,
-                                                                    &desc, ppSRView );
+                                                                    pDesc, ppSRView );
 
         if (SUCCEEDED (hr))
           return hr;
       }
     }
+
+    pDesc = pDescOrig;
   }
 
   HRESULT hr =
@@ -5219,9 +5252,13 @@ D3D11Dev_CreateDepthStencilView_Override (
   _In_opt_  const D3D11_DEPTH_STENCIL_VIEW_DESC *pDesc,
   _Out_opt_       ID3D11DepthStencilView        **ppDepthStencilView )
 {
+  const D3D11_DEPTH_STENCIL_VIEW_DESC* pDescOrig = pDesc;
+
   if (pDesc != nullptr)
   {
-    D3D11_DEPTH_STENCIL_VIEW_DESC desc = *pDesc;
+    std::unique_ptr <D3D11_DEPTH_STENCIL_VIEW_DESC> pDescCopy (
+      new auto (*pDescOrig)
+    );
 
     D3D11_RESOURCE_DIMENSION dim;
     pResource->GetType (&dim);
@@ -5239,15 +5276,18 @@ D3D11Dev_CreateDepthStencilView_Override (
         pTex->GetDesc (&tex_desc);
 
         if ( SK_D3D11_OverrideDepthStencil (newFormat) )
-          desc.Format = newFormat;
+          pDescCopy->Format = newFormat;
 
-        HRESULT hr = D3D11Dev_CreateDepthStencilView_Original ( This, pResource,
-                                                                  &desc, ppDepthStencilView );
+        HRESULT hr = 
+          D3D11Dev_CreateDepthStencilView_Original ( This, pResource,
+                                                       pDesc, ppDepthStencilView );
 
         if (SUCCEEDED (hr))
           return hr;
       }
     }
+
+    pDesc = pDescOrig;
   }
 
   HRESULT hr =
@@ -5265,16 +5305,23 @@ D3D11Dev_CreateUnorderedAccessView_Override (
   _In_opt_  const D3D11_UNORDERED_ACCESS_VIEW_DESC *pDesc,
   _Out_opt_       ID3D11UnorderedAccessView       **ppUAView )
 {
+  const D3D11_UNORDERED_ACCESS_VIEW_DESC* pDescOrig = pDesc;
+
   if (pDesc != nullptr)
   {
-    D3D11_UNORDERED_ACCESS_VIEW_DESC desc = *pDesc;
-    D3D11_RESOURCE_DIMENSION         dim;
+    std::unique_ptr <D3D11_UNORDERED_ACCESS_VIEW_DESC> pDescCopy (
+      new auto (*pDescOrig)
+    );
+
+    pDesc = pDescCopy.get ();
+
+    D3D11_RESOURCE_DIMENSION dim;
 
     pResource->GetType (&dim);
 
     if (dim == D3D11_RESOURCE_DIMENSION_TEXTURE2D)
     {
-      DXGI_FORMAT newFormat = pDesc->Format;
+      DXGI_FORMAT newFormat = pDescCopy->Format;
 
                         CComPtr <ID3D11Texture2D>   pTex = nullptr;
       pResource->QueryInterface <ID3D11Texture2D> (&pTex);
@@ -5285,16 +5332,19 @@ D3D11Dev_CreateUnorderedAccessView_Override (
         pTex->GetDesc (&tex_desc);
 
         if ( SK_D3D11_OverrideDepthStencil (newFormat) )
-          desc.Format = newFormat;
+          pDescCopy->Format = newFormat;
             
 
-        HRESULT hr = D3D11Dev_CreateUnorderedAccessView_Original ( This, pResource,
-                                                                     &desc, ppUAView );
+        HRESULT hr = 
+          D3D11Dev_CreateUnorderedAccessView_Original ( This, pResource,
+                                                          pDescCopy.get (), ppUAView );
 
         if (SUCCEEDED (hr))
           return hr;
       }
     }
+
+    pDesc = pDescOrig;
   }
 
   HRESULT hr =
@@ -5400,12 +5450,20 @@ HRESULT
 WINAPI
 D3D11Dev_CreateTexture2D_Override (
   _In_            ID3D11Device           *This,
-  _In_  /*const*/ D3D11_TEXTURE2D_DESC   *pDesc,
+  _In_      const D3D11_TEXTURE2D_DESC   *pDesc,
   _In_opt_  const D3D11_SUBRESOURCE_DATA *pInitialData,
   _Out_opt_       ID3D11Texture2D        **ppTexture2D )
 {
-  // ^^^^ Const qualifier discarded from prototype because making a copy of this variable
-  //        and modifying causes any other hooked function to see the original data.
+  const D3D11_TEXTURE2D_DESC* pDescOrig = pDesc;
+
+  // Make a copy, then change the value on the stack to point to
+  //   our copy in order to make changes propogate to other software
+  //     that hooks this...
+  std::unique_ptr <D3D11_TEXTURE2D_DESC> pDescCopy (
+    new auto (*pDescOrig)
+  );
+
+  pDesc = pDescCopy.get ();
 
 
   SK_D3D11_MemoryThreads.mark ();
@@ -5419,7 +5477,7 @@ D3D11Dev_CreateTexture2D_Override (
     {
       if (SK_D3D11_OverrideDepthStencil (newFormat))
       {
-        pDesc->Format = newFormat;
+        pDescCopy->Format = newFormat;
         pInitialData  = nullptr;
       }
     }
@@ -5433,11 +5491,11 @@ D3D11Dev_CreateTexture2D_Override (
     //  if ( (pDesc->BindFlags & D3D11_BIND_DEPTH_STENCIL)    ||
     //       (pDesc->BindFlags & D3D11_BIND_RENDER_TARGET) )
     //  {
-    //    if (pDesc->Width == config.render.dxgi.res.min.x)
-    //      pDesc->Width *= (float)config.render.dxgi.res.max.x / (float)config.render.dxgi.res.min.x;
+    //    if (pDescCopy->Width == config.render.dxgi.res.min.x)
+    //      pDescCopy->Width *= (float)config.render.dxgi.res.max.x / (float)config.render.dxgi.res.min.x;
     //
-    //    if (pDesc->Height == config.render.dxgi.res.min.y)
-    //      pDesc->Height *= (float)config.render.dxgi.res.max.y / (float)config.render.dxgi.res.min.y;
+    //    if (pDescCopy->Height == config.render.dxgi.res.min.y)
+    //      pDescCopy->Height *= (float)config.render.dxgi.res.max.y / (float)config.render.dxgi.res.min.y;
     //  }
     //}
   }
@@ -5445,9 +5503,6 @@ D3D11Dev_CreateTexture2D_Override (
 
   if (ppTexture2D == nullptr)
     ppTexture2D = nullptr;
-
-  if (InterlockedExchangeAdd (&SK_D3D11_tex_init, 0) == FALSE)
-    SK_D3D11_InitTextures ();
 
   bool early_out = false;
 
@@ -5469,9 +5524,16 @@ D3D11Dev_CreateTexture2D_Override (
                      pInitialData->pSysMem != nullptr &&
                      pDesc->SampleDesc.Count == 1     &&
                      pDesc->MiscFlags        == 0x0   &&
-                     pDesc->Width  > 0                && 
-                     pDesc->Height > 0                &&
+                     pDesc->Width     > 0             && 
+                     pDesc->Height    > 0             &&
+                     pDesc->MipLevels > 0             &&
                      pDesc->ArraySize == 1 );
+
+  if (pDesc->MipLevels == 0)
+  {
+    SK_LOG0 ( ( L"Skipping Texture because of Mipmap Autogen" ),
+                L" TexCache " );
+  }
 
   cacheable = cacheable &&
     ((! (pDesc->BindFlags & D3D11_BIND_DEPTH_STENCIL)    ||
@@ -5687,17 +5749,16 @@ D3D11Dev_CreateTexture2D_Override (
   {
     static volatile ULONG init = FALSE;
 
-    if (! InterlockedCompareExchange (&init, TRUE, FALSE)) {
-      DXGI_VIRTUAL_HOOK ( ppTexture2D, 2, "IUnknown::Release",
-                          IUnknown_Release,
-                          IUnknown_Release_Original,
-                          IUnknown_Release_pfn );
-      DXGI_VIRTUAL_HOOK ( ppTexture2D, 1, "IUnknown::AddRef",
-                          IUnknown_AddRef,
-                          IUnknown_AddRef_Original,
-                          IUnknown_AddRef_pfn );
-
-      MH_ApplyQueued ();
+    if (! InterlockedCompareExchange (&init, TRUE, FALSE))
+    {
+      DXGI_VIRTUAL_HOOK_IMM ( ppTexture2D, 2, "IUnknown::Release",
+                              IUnknown_Release,
+                              IUnknown_Release_Original,
+                              IUnknown_Release_pfn );
+      DXGI_VIRTUAL_HOOK_IMM ( ppTexture2D, 1, "IUnknown::AddRef",
+                              IUnknown_AddRef,
+                              IUnknown_AddRef_Original,
+                              IUnknown_AddRef_pfn );
     }
   }
 
@@ -5719,13 +5780,18 @@ D3D11Dev_CreateTexture2D_Override (
 
   if ( SUCCEEDED (ret) && cacheable )
   {
-    SK_D3D11_Textures.refTexture2D (
-      *ppTexture2D,
-        pDesc,
-          cache_tag,
-            size,
-              load_end.QuadPart - load_start.QuadPart
-    );
+    SK_AutoCriticalSection crit (&cache_cs);
+
+    //if (! SK_D3D11_Textures.Blacklist_2D [pDesc->MipLevels].count (checksum))
+    //{
+      SK_D3D11_Textures.refTexture2D (
+        *ppTexture2D,
+          pDesc,
+            cache_tag,
+              size,
+                load_end.QuadPart - load_start.QuadPart
+      );
+    //}
   }
 
   return ret;
@@ -6019,8 +6085,8 @@ SK_D3D11_InitTextures (void)
 {
   if (! InterlockedCompareExchange (&SK_D3D11_tex_init, TRUE, FALSE))
   {
-    if ( StrStrIW (SK_GetHostApp (), L"ffx.exe")   ||
-         StrStrIW (SK_GetHostApp (), L"ffx-2.exe") ||
+    if ( StrStrIW (SK_GetHostApp (), L"FFX.exe")   ||
+         StrStrIW (SK_GetHostApp (), L"FFX-2.exe") ||
          StrStrIW (SK_GetHostApp (), L"FFX&X-2_Will.exe") )
       SK_D3D11_inject_textures_ffx = true;
 
@@ -6037,25 +6103,6 @@ SK_D3D11_InitTextures (void)
     cache_opts.max_size          = config.textures.cache.max_size;
     cache_opts.min_size          = config.textures.cache.min_size;
     cache_opts.ignore_non_mipped = config.textures.cache.ignore_nonmipped;
-
-    SK_D3D11_Textures.TexRefs_2D.reserve       (8192);
-    SK_D3D11_Textures.Textures_2D.reserve      (8192);
-    SK_D3D11_Textures.HashMap_2D [ 1].reserve  ( 512);
-    SK_D3D11_Textures.HashMap_2D [ 2].reserve  ( 512);
-    SK_D3D11_Textures.HashMap_2D [ 3].reserve  ( 512);
-    SK_D3D11_Textures.HashMap_2D [ 4].reserve  ( 512);
-    SK_D3D11_Textures.HashMap_2D [ 5].reserve  ( 512);
-    SK_D3D11_Textures.HashMap_2D [ 6].reserve  ( 512);
-    SK_D3D11_Textures.HashMap_2D [ 7].reserve  ( 512);
-    SK_D3D11_Textures.HashMap_2D [ 8].reserve  ( 512);
-    SK_D3D11_Textures.HashMap_2D [ 9].reserve  ( 512);
-    SK_D3D11_Textures.HashMap_2D [10].reserve  ( 512);
-    SK_D3D11_Textures.HashMap_2D [11].reserve  ( 512);
-    SK_D3D11_Textures.HashMap_2D [12].reserve  ( 512);
-    SK_D3D11_Textures.HashMap_2D [13].reserve  ( 512);
-    SK_D3D11_Textures.HashMap_2D [14].reserve  ( 512);
-    SK_D3D11_Textures.HashMap_2D [15].reserve  ( 512);
-    SK_D3D11_Textures.HashMap_2D [16].reserve  ( 512);
 
     //
     // Legacy Hack for Untitled Project X (FFX/FFX-2)
@@ -6175,7 +6222,6 @@ SK_D3D11_Shutdown (void)
                         SK_D3D11_Textures.RedundantLoads_2D );
   }
 
-#if 0
   SK_D3D11_Textures.reset ();
 
   // Stop caching while we shutdown
@@ -6189,7 +6235,6 @@ SK_D3D11_Shutdown (void)
     DeleteCriticalSection (&cache_cs);
     DeleteCriticalSection (&inject_cs);
   }
-#endif
 }
 
 void
@@ -6498,8 +6543,6 @@ HookD3D11 (LPVOID user)
                          D3D11_CSGetShader_pfn);
 
 #endif
-
-    MH_ApplyQueued ();
   }
 
 #ifdef _WIN64

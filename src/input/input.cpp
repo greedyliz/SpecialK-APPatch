@@ -47,11 +47,11 @@
 bool
 SK_InputUtil_IsHWCursorVisible (void)
 {
-  CURSORINFO cursor_info;
+  CURSORINFO cursor_info        = { };
              cursor_info.cbSize = sizeof (CURSORINFO);
   
   GetCursorInfo_Original (&cursor_info);
- 
+
   return (cursor_info.flags & CURSOR_SHOWING);
 }
 
@@ -274,8 +274,6 @@ SK_Input_HookHID (void)
       (HidP_GetCaps_pfn)GetProcAddress ( GetModuleHandle (L"HID.DLL"),
                                            "HidP_GetCaps" );
 
-    MH_ApplyQueued ();
-
     if (HidP_GetData_Original != nullptr)
       InterlockedIncrement (&hooked);
   }
@@ -341,13 +339,13 @@ SK_RawInput_GetMice (bool* pDifferent = nullptr)
       //raw_overrides.mouse.legacy_messages = true;
     }
 
-    for (RAWINPUTDEVICE it : raw_mice)
+    for (auto& it : raw_mice)
     {
       HWND hWnd = it.hwndTarget;
 
       if (raw_overrides.mouse.legacy_messages)
       {
-        different |= (it.dwFlags & RIDEV_NOLEGACY) != 0;
+        different    |= (it.dwFlags & RIDEV_NOLEGACY) != 0;
         it.dwFlags   &= ~(RIDEV_NOLEGACY | RIDEV_APPKEYS | RIDEV_REMOVE);
         it.dwFlags   &= ~RIDEV_CAPTUREMOUSE;
         it.hwndTarget = hWnd;
@@ -356,12 +354,12 @@ SK_RawInput_GetMice (bool* pDifferent = nullptr)
 
       else
       {
-        different |= (it.dwFlags & RIDEV_NOLEGACY) == 0;
-        it.dwFlags              |= RIDEV_NOLEGACY;
+        different  |= (it.dwFlags & RIDEV_NOLEGACY) == 0;
+        it.dwFlags |= RIDEV_NOLEGACY;
         RegisterRawInputDevices_Original ( &it, 1, sizeof RAWINPUTDEVICE );
       }
     
-      overrides.push_back (it);
+      overrides.emplace_back (it);
     }
 
     if (pDifferent != nullptr)
@@ -411,7 +409,7 @@ SK_RawInput_GetKeyboards (bool* pDifferent = nullptr)
         (it).dwFlags |=   RIDEV_NOLEGACY | RIDEV_APPKEYS;
       }
 
-      overrides.push_back (it);
+      overrides.emplace_back (it);
     }
 
     if (pDifferent != nullptr)
@@ -850,14 +848,24 @@ sk_imgui_cursor_s SK_ImGui_Cursor;
 
 HCURSOR GetGameCursor (void);
 
+__inline
+bool
+SK_ImGui_IsMouseRelevant (void)
+{
+  // SK_ImGui_Visible is the full-blown config UI;
+  //   but we also have floating widgets that may capture mouse
+  //     input.
+  return SK_ImGui_Visible || ImGui::IsAnyWindowHovered ();
+}
 
+__inline
 void
 sk_imgui_cursor_s::update (void)
 {
   if (GetGameCursor () != nullptr)
     SK_ImGui_Cursor.orig_img = GetGameCursor ();
 
-  if (SK_ImGui_Visible)
+  if (SK_ImGui_IsMouseRelevant ())
   {
     if (ImGui::GetIO ().WantCaptureMouse || SK_ImGui_Cursor.orig_img == nullptr)
       SK_ImGui_Cursor.showSystemCursor (false);
@@ -869,12 +877,14 @@ sk_imgui_cursor_s::update (void)
     SK_ImGui_Cursor.showSystemCursor ();
 }
 
+__inline
 void
 sk_imgui_cursor_s::showImGuiCursor (void)
 {
   showSystemCursor (false);
 }
 
+__inline
 void
 sk_imgui_cursor_s::LocalToScreen (LPPOINT lpPoint)
 {
@@ -938,6 +948,7 @@ sk_imgui_cursor_s::ClientToLocal    (LPPOINT lpPoint)
   lpPoint->y = (LONG)( ( y * out.height + out.height ) / 2.0f );
 }
 
+__inline
 void
 sk_imgui_cursor_s::ScreenToLocal (LPPOINT lpPoint)
 {
@@ -983,8 +994,8 @@ ImGui_DesiredCursor (void)
 void
 ImGuiCursor_Impl (void)
 {
-  CURSORINFO ci;
-  ci.cbSize = sizeof CURSORINFO;
+  CURSORINFO ci = { };
+  ci.cbSize     = sizeof CURSORINFO;
 
   GetCursorInfo_Original (&ci);
 
@@ -1004,7 +1015,7 @@ ImGuiCursor_Impl (void)
   //
   else
   {
-    if (SK_ImGui_Visible)
+    if (SK_ImGui_IsMouseRelevant ())
     {
       SetCursor_Original (nullptr);
       ImGui::GetIO ().MouseDrawCursor = (! SK_ImGui_Cursor.idle);
@@ -1015,10 +1026,11 @@ ImGuiCursor_Impl (void)
 void
 sk_imgui_cursor_s::showSystemCursor (bool system)
 {
-  CURSORINFO cursor_info;
-  cursor_info.cbSize = sizeof (CURSORINFO);
+  CURSORINFO cursor_info = { };
+  cursor_info.cbSize     = sizeof (CURSORINFO);
 
-  static HCURSOR wait_cursor = LoadCursor (nullptr, IDC_WAIT);
+  static HCURSOR wait_cursor =
+    LoadCursor (nullptr, IDC_WAIT);
 
   if (SK_ImGui_Cursor.orig_img == wait_cursor)
     SK_ImGui_Cursor.orig_img = LoadCursor (nullptr, IDC_ARROW);
@@ -1028,7 +1040,7 @@ sk_imgui_cursor_s::showSystemCursor (bool system)
     SetCursor_Original     (SK_ImGui_Cursor.orig_img);
     GetCursorInfo_Original (&cursor_info);
 
-    if ((! SK_ImGui_Visible) || (cursor_info.flags & CURSOR_SHOWING))
+    if ((! SK_ImGui_IsMouseRelevant ()) || (cursor_info.flags & CURSOR_SHOWING))
       ImGui::GetIO ().MouseDrawCursor = false;
 
     else
@@ -1043,19 +1055,21 @@ sk_imgui_cursor_s::showSystemCursor (bool system)
 void
 sk_imgui_cursor_s::activateWindow (bool active)
 {
-  CURSORINFO ci;
-  ci.cbSize = sizeof ci;
-  
+  CURSORINFO ci = { };
+  ci.cbSize     = sizeof ci;
+
   GetCursorInfo_Original (&ci);
-  
+
   if (active)
   {
-    if (SK_ImGui_Visible)
+    if (SK_ImGui_IsMouseRelevant ())
     {
       if (SK_ImGui_WantMouseCapture ())
       {
   
-      } else if (SK_ImGui_Cursor.orig_img)
+      }
+
+      else if (SK_ImGui_Cursor.orig_img)
         SetCursor_Original (SK_ImGui_Cursor.orig_img);
     }
   }
@@ -1126,7 +1140,7 @@ SK_ImGui_WantMouseCapture (void)
 {
   bool imgui_capture = false;
 
-  if (SK_ImGui_Visible)
+  if (SK_ImGui_IsMouseRelevant ())
   {
     ImGuiIO& io =
       ImGui::GetIO ();
@@ -1223,13 +1237,13 @@ GetMouseMovePointsEx_Detour(
 {
   SK_LOG_FIRST_CALL
 
-  if (SK_ImGui_Visible)
+  if (SK_ImGui_IsMouseRelevant ())
   {
     bool implicit_capture = false;
 
     // Depending on warp prefs, we may not allow the game to know about mouse movement
     //   (even if ImGui doesn't want mouse capture)
-    if ( ( SK_ImGui_Cursor.prefs.no_warp.ui_open && SK_ImGui_Visible                  ) ||
+    if ( ( SK_ImGui_Cursor.prefs.no_warp.ui_open && SK_ImGui_IsMouseRelevant ()       ) ||
          ( SK_ImGui_Cursor.prefs.no_warp.visible && SK_InputUtil_IsHWCursorVisible () )    )
       implicit_capture = true;
 
@@ -1253,7 +1267,7 @@ SetCursor_Detour (
 
   SK_ImGui_Cursor.orig_img = hCursor;
 
-  if (! SK_ImGui_Visible)
+  if (! SK_ImGui_IsMouseRelevant ())
     return SetCursor_Original (hCursor);
   else if (! (ImGui::GetIO ().WantCaptureMouse || hCursor == nullptr))
     return SetCursor_Original (hCursor);
@@ -1274,13 +1288,13 @@ GetCursorInfo_Detour (PCURSORINFO pci)
   pci->hCursor = SK_ImGui_Cursor.orig_img;
 
 
-  if (SK_ImGui_Visible)
+  if (SK_ImGui_IsMouseRelevant ())
   {
     bool implicit_capture = false;
 
     // Depending on warp prefs, we may not allow the game to know about mouse movement
     //   (even if ImGui doesn't want mouse capture)
-    if ( ( SK_ImGui_Cursor.prefs.no_warp.ui_open && SK_ImGui_Visible                  ) ||
+    if ( ( SK_ImGui_Cursor.prefs.no_warp.ui_open && SK_ImGui_IsMouseRelevant       () ) ||
          ( SK_ImGui_Cursor.prefs.no_warp.visible && SK_InputUtil_IsHWCursorVisible () )    )
       implicit_capture = true;
 
@@ -1315,13 +1329,13 @@ GetCursorPos_Detour (LPPOINT lpPoint)
   SK_LOG_FIRST_CALL
 
 
-  if (SK_ImGui_Visible)
+  if (SK_ImGui_IsMouseRelevant ())
   {
     bool implicit_capture = false;
 
     // Depending on warp prefs, we may not allow the game to know about mouse movement
     //   (even if ImGui doesn't want mouse capture)
-    if ( ( SK_ImGui_Cursor.prefs.no_warp.ui_open && SK_ImGui_Visible                  ) ||
+    if ( ( SK_ImGui_Cursor.prefs.no_warp.ui_open && SK_ImGui_IsMouseRelevant       () ) ||
          ( SK_ImGui_Cursor.prefs.no_warp.visible && SK_InputUtil_IsHWCursorVisible () )    )
       implicit_capture = true;
 
@@ -1371,7 +1385,7 @@ SetCursorPos_Detour (_In_ int x, _In_ int y)
   if (config.window.drag_lock)
     return TRUE;
 
-  if ( ( SK_ImGui_Cursor.prefs.no_warp.ui_open && SK_ImGui_Visible                  ) ||
+  if ( ( SK_ImGui_Cursor.prefs.no_warp.ui_open && SK_ImGui_IsMouseRelevant       () ) ||
        ( SK_ImGui_Cursor.prefs.no_warp.visible && SK_InputUtil_IsHWCursorVisible () )    )
   {
     //game_mouselook = SK_GetFramesDrawn ();
@@ -1442,7 +1456,7 @@ mouse_event_Detour (
 
 // TODO: Process this the right way...
 
-  if (SK_ImGui_Visible)
+  if (SK_ImGui_IsMouseRelevant ())
   {
     return;
   }
@@ -1707,9 +1721,7 @@ void SK_Input_PreInit (void)
   if (config.input.gamepad.hook_xinput)
     SK_XInput_InitHotPlugHooks ();
 
-  MH_ApplyQueued ();
-
-  SK_Input_Init ();
+  SK_ApplyQueuedHooks ();
 }
 
 
@@ -1719,8 +1731,6 @@ SK_Input_Init (void)
   SK_Input_PreHookHID    ();
   SK_Input_PreHookDI8    ();
   SK_Input_PreHookXInput ();
-
-  SK_ApplyQueuedHooks    ();
 }
 
 
@@ -1728,3 +1738,108 @@ SK_Input_Init (void)
 sk_input_api_context_s SK_XInput_Backend;
 sk_input_api_context_s SK_HID_Backend;
 sk_input_api_context_s SK_RawInput_Backend;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+enum class SK_Input_BindFlags
+{
+  Invalid           =    0,
+
+  NonExclusive      = ( 1UL << 0 ),
+     Exclusive      = ( 1UL << 1 ),
+  ModeAgnostic      = ( NonExclusive  |
+                        Exclusive     ),
+  
+  ActivateOnPress   = ( 1UL << 2 ),
+  ActivateOnRelease = ( 1UL << 3 ),
+
+  Repeatable        = ( 1UL << 4 ),
+
+  ReleaseOnActivate = ( 1UL << 5 ), // Immediately behave as though the buttons were released
+  HoldOnActivate    = ( 1UL << 6 ), // Immediately behave as though the buttons are held
+
+  Default           = ( ModeAgnostic    |
+                        ActivateOnPress )
+};
+
+enum class SK_Input_ModifierKeys
+{
+  None        =    0,
+
+
+  Left_Ctrl   = ( 1UL << 0 ),
+  Right_Ctrl  = ( 1UL << 1 ),
+
+  Left_Alt    = ( 1UL << 2 ),
+  Right_Alt   = ( 1UL << 3 ),
+
+  Left_Shift  = ( 1UL << 4 ),
+  Right_Shift = ( 1UL << 5 ),
+
+
+  Ctrl        = ( Left_Ctrl |
+                 Right_Ctrl ),
+
+  Alt         = ( Left_Alt |
+                 Right_Alt ),
+
+  Shift       = ( Left_Shift |
+                 Right_Shift )
+};
+
+
+struct SK_Input_Duration
+{
+  uint16_t min = 0,
+           max = 0;
+};
+
+struct SK_Input_KeyBinding
+{
+  struct key_s
+  {
+    SK_Input_Duration   duration   = {    };
+    uint16_t            scancode   = 0x0000;
+  } keys [1];
+
+  SK_Input_ModifierKeys modifiers  = SK_Input_ModifierKeys::None;
+  SK_Input_BindFlags    flags      = SK_Input_BindFlags::Default;
+
+  uint8_t               combo_size = 1;
+};
+
+struct SK_Input_PadBinding
+{
+  struct button_s
+  {
+    SK_Input_Duration duration  = {};
+    uint8_t           button    = 00;
+  } buttons [1];
+
+  SK_Input_BindFlags flags      = SK_Input_BindFlags::Default;
+
+  uint8_t            combo_size = 1;
+};
+
+
+class SK_Input_KeyBindFactory
+{
+
+};
+
+class SK_Input_PadBindFactory
+{
+
+};

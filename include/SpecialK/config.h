@@ -160,6 +160,7 @@ struct sk_config_t
     float   scale              = 1.0f;
     bool    show_eula          = true;
     bool    show_input_apis    = true;
+    bool    use_mac_style_menu = false;
 
     struct {
       struct {
@@ -385,6 +386,9 @@ struct sk_config_t
       int   absolute            = 0;
       float percent             = 0.0f;
       } x, y;
+      bool isZero (void) { return x.absolute == 0    && y.absolute == 0 &&
+                                  x.percent > -0.00001f && x.percent < 0.00001f &&
+                                  y.percent > -0.00001f && y.percent < 0.00001f; }
     } offset;
     bool    background_render   = false;
     bool    background_mute     = false;
@@ -458,7 +462,7 @@ struct sk_config_t
 
     struct {
       bool   enable            = true;
-      bool   gsync_status      = false;
+      bool   gsync_status      = true;
     } NvAPI;
 
     struct {

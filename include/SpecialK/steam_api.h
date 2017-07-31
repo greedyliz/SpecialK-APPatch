@@ -397,7 +397,6 @@ public:
 
     MH_QueueEnableHook (SteamAPI_Shutdown);
     MH_QueueEnableHook (SteamAPI_RunCallbacks);
-    MH_ApplyQueued     ();
 
     user_ =
       client_->GetISteamUser (
@@ -504,6 +503,8 @@ public:
               ISteamController_GetControllerState_Detour,
                     (LPVOID *)&GetControllerState_Original );
 #endif
+
+    MH_ApplyQueued     ();
 
     return true;
   }

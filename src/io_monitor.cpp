@@ -26,6 +26,7 @@
 #include <SpecialK/io_monitor.h>
 #include <SpecialK/log.h>
 
+#include <SpecialK/core.h>
 #include <SpecialK/framerate.h>
 #include <SpecialK/config.h>
 
@@ -471,7 +472,7 @@ SK_MonitorCPU (LPVOID user_param)
       break;
 
     // Only poll WMI while the data view is visible
-    if (! config.cpu.show)
+    if (! (config.cpu.show || SK_ImGui_Widgets.cpumon))
       continue;
 
     cpu.dwNumReturned = 0;
