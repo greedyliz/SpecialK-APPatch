@@ -254,21 +254,25 @@ SK_Input_HookHID (void)
     SK_LOG0 ( ( L"Game uses HID, installing input hooks..." ),
                 L"   Input  " );
 
-    SK_CreateDLLHook2 ( L"HID.DLL", "HidP_GetData",
-                          HidP_GetData_Detour,
-                (LPVOID*)&HidP_GetData_Original );
+    SK_CreateDLLHook2 (     L"HID.DLL",
+                             "HidP_GetData",
+                              HidP_GetData_Detour,
+reinterpret_cast <LPVOID *> (&HidP_GetData_Original) );
 
-    SK_CreateDLLHook2 ( L"HID.DLL", "HidD_GetPreparsedData",
-                          HidD_GetPreparsedData_Detour,
-                (LPVOID*)&HidD_GetPreparsedData_Original );
+    SK_CreateDLLHook2 (     L"HID.DLL",
+                             "HidD_GetPreparsedData",
+                              HidD_GetPreparsedData_Detour,
+reinterpret_cast <LPVOID *> (&HidD_GetPreparsedData_Original) );
 
-    SK_CreateDLLHook2 ( L"HID.DLL", "HidD_FreePreparsedData",
-                          HidD_FreePreparsedData_Detour,
-                (LPVOID*)&HidD_FreePreparsedData_Original );
+    SK_CreateDLLHook2 (     L"HID.DLL",
+                             "HidD_FreePreparsedData",
+                              HidD_FreePreparsedData_Detour,
+reinterpret_cast <LPVOID *> (&HidD_FreePreparsedData_Original) );
 
-    SK_CreateDLLHook2 ( L"HID.DLL", "HidD_GetFeature",
-                          HidD_GetFeature_Detour,
-                (LPVOID*)&HidD_GetFeature_Original );
+    SK_CreateDLLHook2 (     L"HID.DLL",
+                             "HidD_GetFeature",
+                              HidD_GetFeature_Detour,
+reinterpret_cast <LPVOID *> (&HidD_GetFeature_Original) );
 
     HidP_GetCaps_Original =
       (HidP_GetCaps_pfn)GetProcAddress ( GetModuleHandle (L"HID.DLL"),
@@ -637,12 +641,18 @@ UINT WINAPI GetRegisteredRawInputDevices_Detour (
   }
 
   int idx = 0;
-  for (auto& it : raw_devices)
+
+  if (pRawInputDevices)
   {
-    if (pRawInputDevices)
+    for (auto it : raw_devices)
+    {
       pRawInputDevices [idx++] = it;
-    else
-      idx++;
+    }
+  }
+
+  else
+  {
+    idx += static_cast <int> (raw_devices.size ());
   }
 
   return idx;
@@ -1066,7 +1076,7 @@ sk_imgui_cursor_s::activateWindow (bool active)
     {
       if (SK_ImGui_WantMouseCapture ())
       {
-  
+
       }
 
       else if (SK_ImGui_Cursor.orig_img)
@@ -1078,7 +1088,7 @@ sk_imgui_cursor_s::activateWindow (bool active)
 
 
 
-HCURSOR game_cursor    = 0;
+HCURSOR game_cursor = 0;
 
 bool
 SK_ImGui_WantKeyboardCapture (void)
@@ -1288,7 +1298,7 @@ GetCursorInfo_Detour (PCURSORINFO pci)
   pci->hCursor = SK_ImGui_Cursor.orig_img;
 
 
-  if (SK_ImGui_IsMouseRelevant ())
+  if (ret && SK_ImGui_IsMouseRelevant ())
   {
     bool implicit_capture = false;
 
@@ -1570,7 +1580,7 @@ WINAPI
 ImGui_WndProcHandler (HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 bool
-SK_ImGui_HandlesMessage (LPMSG lpMsg, bool remove, bool peek)
+SK_ImGui_HandlesMessage (LPMSG lpMsg, bool, bool)
 {
   assert (lpMsg->hwnd == game_window.hWnd);
 
@@ -1656,66 +1666,81 @@ void SK_Input_Init (void);
 // Parts of the Win32 API that are safe to hook from DLL Main
 void SK_Input_PreInit (void)
 {
-  SK_CreateDLLHook2 ( L"user32.dll", "GetRawInputData",
-                     GetRawInputData_Detour,
-           (LPVOID*)&GetRawInputData_Original );
+  SK_CreateDLLHook2 (       L"user32.dll",
+                             "GetRawInputData",
+                              GetRawInputData_Detour,
+reinterpret_cast <LPVOID *> (&GetRawInputData_Original) );
 
-  SK_CreateDLLHook2 ( L"user32.dll", "GetAsyncKeyState",
-                     GetAsyncKeyState_Detour,
-           (LPVOID*)&GetAsyncKeyState_Original );
+  SK_CreateDLLHook2 (       L"user32.dll",
+                             "GetAsyncKeyState",
+                              GetAsyncKeyState_Detour,
+reinterpret_cast <LPVOID *> (&GetAsyncKeyState_Original) );
 
-  SK_CreateDLLHook2 ( L"user32.dll", "GetKeyState",
-                     GetKeyState_Detour,
-           (LPVOID*)&GetKeyState_Original );
+  SK_CreateDLLHook2 (       L"user32.dll",
+                             "GetKeyState",
+                              GetKeyState_Detour,
+reinterpret_cast <LPVOID *> (&GetKeyState_Original) );
 
-  SK_CreateDLLHook2 ( L"user32.dll", "GetKeyboardState",
-                     GetKeyboardState_Detour,
-           (LPVOID*)&GetKeyboardState_Original );
+  SK_CreateDLLHook2 (       L"user32.dll",
+                             "GetKeyboardState",
+                              GetKeyboardState_Detour,
+reinterpret_cast <LPVOID *> (&GetKeyboardState_Original) );
 
-  SK_CreateDLLHook2 ( L"user32.dll", "GetCursorPos",
-                     GetCursorPos_Detour,
-           (LPVOID*)&GetCursorPos_Original );
+  SK_CreateDLLHook2 (       L"user32.dll",
+                             "GetCursorPos",
+                              GetCursorPos_Detour,
+reinterpret_cast <LPVOID *> (&GetCursorPos_Original) );
 
-  SK_CreateDLLHook2 ( L"user32.dll", "GetCursorInfo",
-                     GetCursorInfo_Detour,
-           (LPVOID*)&GetCursorInfo_Original );
+  SK_CreateDLLHook2 (       L"user32.dll",
+                             "GetCursorInfo",
+                              GetCursorInfo_Detour,
+reinterpret_cast <LPVOID *> (&GetCursorInfo_Original) );
 
-  SK_CreateDLLHook2 ( L"user32.dll", "GetMouseMovePointsEx",
-                     GetMouseMovePointsEx_Detour,
-           (LPVOID*)&GetMouseMovePointsEx_Original );
+  SK_CreateDLLHook2 (       L"user32.dll",
+                             "GetMouseMovePointsEx",
+                              GetMouseMovePointsEx_Detour,
+reinterpret_cast <LPVOID *> (&GetMouseMovePointsEx_Original) );
 
-  SK_CreateDLLHook2 ( L"user32.dll", "SetCursor",
-                     SetCursor_Detour,
-           (LPVOID*)&SetCursor_Original );
+  SK_CreateDLLHook2 (       L"user32.dll",
+                             "SetCursor",
+                              SetCursor_Detour,
+reinterpret_cast <LPVOID *> (&SetCursor_Original) );
 
-  SK_CreateDLLHook2 ( L"user32.dll", "SetCursorPos",
-                     SetCursorPos_Detour,
-           (LPVOID*)&SetCursorPos_Original );
+  SK_CreateDLLHook2 (       L"user32.dll",
+                             "SetCursorPos",
+                              SetCursorPos_Detour,
+reinterpret_cast <LPVOID *> (&SetCursorPos_Original) );
 
-  SK_CreateDLLHook2 ( L"user32.dll", "SendInput",
-                     SendInput_Detour,
-           (LPVOID*)&SendInput_Original );
+  SK_CreateDLLHook2 (       L"user32.dll",
+                             "SendInput",
+                              SendInput_Detour,
+reinterpret_cast <LPVOID *> (&SendInput_Original) );
 
-  SK_CreateDLLHook2 ( L"user32.dll", "mouse_event",
-                     mouse_event_Detour,
-           (LPVOID*)&mouse_event_Original );
+  SK_CreateDLLHook2 (       L"user32.dll",
+                             "mouse_event",
+                              mouse_event_Detour,
+reinterpret_cast <LPVOID *> (&mouse_event_Original) );
 
-  SK_CreateDLLHook2 ( L"user32.dll", "keybd_event",
-                     keybd_event_Detour,
-           (LPVOID*)&keybd_event_Original );
+  SK_CreateDLLHook2 (       L"user32.dll",
+                             "keybd_event",
+                              keybd_event_Detour,
+reinterpret_cast <LPVOID *> (&keybd_event_Original) );
 
-  SK_CreateDLLHook2 ( L"user32.dll", "RegisterRawInputDevices",
-                     RegisterRawInputDevices_Detour,
-           (LPVOID*)&RegisterRawInputDevices_Original );
+  SK_CreateDLLHook2 (       L"user32.dll",
+                             "RegisterRawInputDevices",
+                              RegisterRawInputDevices_Detour,
+reinterpret_cast <LPVOID *> (&RegisterRawInputDevices_Original) );
 
-  SK_CreateDLLHook2 ( L"user32.dll", "GetRegisteredRawInputDevices",
-                      GetRegisteredRawInputDevices_Detour,
-           (LPVOID *)&GetRegisteredRawInputDevices_Original );
+  SK_CreateDLLHook2 (       L"user32.dll",
+                             "GetRegisteredRawInputDevices",
+                              GetRegisteredRawInputDevices_Detour,
+reinterpret_cast <LPVOID *> (&GetRegisteredRawInputDevices_Original) );
 
 #if 0
-  SK_CreateDLLHook2 ( L"user32.dll", "GetRawInputBuffer",
-                     GetRawInputBuffer_Detour,
-           (LPVOID*)&GetRawInputBuffer_Original );
+  SK_CreateDLLHook2 (       L"user32.dll",
+                             "GetRawInputBuffer",
+                              GetRawInputBuffer_Detour,
+reinterpret_cast <LPVOID *> (&GetRawInputBuffer_Original) );
 #endif
 
   if (config.input.gamepad.hook_xinput)
@@ -1738,108 +1763,3 @@ SK_Input_Init (void)
 sk_input_api_context_s SK_XInput_Backend;
 sk_input_api_context_s SK_HID_Backend;
 sk_input_api_context_s SK_RawInput_Backend;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-enum class SK_Input_BindFlags
-{
-  Invalid           =    0,
-
-  NonExclusive      = ( 1UL << 0 ),
-     Exclusive      = ( 1UL << 1 ),
-  ModeAgnostic      = ( NonExclusive  |
-                        Exclusive     ),
-  
-  ActivateOnPress   = ( 1UL << 2 ),
-  ActivateOnRelease = ( 1UL << 3 ),
-
-  Repeatable        = ( 1UL << 4 ),
-
-  ReleaseOnActivate = ( 1UL << 5 ), // Immediately behave as though the buttons were released
-  HoldOnActivate    = ( 1UL << 6 ), // Immediately behave as though the buttons are held
-
-  Default           = ( ModeAgnostic    |
-                        ActivateOnPress )
-};
-
-enum class SK_Input_ModifierKeys
-{
-  None        =    0,
-
-
-  Left_Ctrl   = ( 1UL << 0 ),
-  Right_Ctrl  = ( 1UL << 1 ),
-
-  Left_Alt    = ( 1UL << 2 ),
-  Right_Alt   = ( 1UL << 3 ),
-
-  Left_Shift  = ( 1UL << 4 ),
-  Right_Shift = ( 1UL << 5 ),
-
-
-  Ctrl        = ( Left_Ctrl |
-                 Right_Ctrl ),
-
-  Alt         = ( Left_Alt |
-                 Right_Alt ),
-
-  Shift       = ( Left_Shift |
-                 Right_Shift )
-};
-
-
-struct SK_Input_Duration
-{
-  uint16_t min = 0,
-           max = 0;
-};
-
-struct SK_Input_KeyBinding
-{
-  struct key_s
-  {
-    SK_Input_Duration   duration   = {    };
-    uint16_t            scancode   = 0x0000;
-  } keys [1];
-
-  SK_Input_ModifierKeys modifiers  = SK_Input_ModifierKeys::None;
-  SK_Input_BindFlags    flags      = SK_Input_BindFlags::Default;
-
-  uint8_t               combo_size = 1;
-};
-
-struct SK_Input_PadBinding
-{
-  struct button_s
-  {
-    SK_Input_Duration duration  = {};
-    uint8_t           button    = 00;
-  } buttons [1];
-
-  SK_Input_BindFlags flags      = SK_Input_BindFlags::Default;
-
-  uint8_t            combo_size = 1;
-};
-
-
-class SK_Input_KeyBindFactory
-{
-
-};
-
-class SK_Input_PadBindFactory
-{
-
-};

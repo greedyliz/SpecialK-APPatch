@@ -52,23 +52,23 @@ LPVOID pfnSleep                   = nullptr;
 Sleep_pfn                   Sleep_Original                   = nullptr;
 QueryPerformanceCounter_pfn QueryPerformanceCounter_Original = nullptr;
 
-auto SK_CurrentPerf = []()->
- LARGE_INTEGER
-  {
-    LARGE_INTEGER                     time;
-    QueryPerformanceCounter_Original (&time);
-    return                            time;
-  };
+auto SK_CurrentPerf =
+ []{
+     LARGE_INTEGER                     time;
+     QueryPerformanceCounter_Original (&time);
+     return                            time;
+   };
 
-auto SK_DeltaPerf = [](auto delta, auto freq)->
- LARGE_INTEGER
-  {
-    LARGE_INTEGER time = SK_CurrentPerf ();
-
-    time.QuadPart -= (LONGLONG)(delta * freq);
-
-    return time;
-  };
+auto SK_DeltaPerf =
+ [](auto delta, auto freq)->
+  LARGE_INTEGER
+   {
+     LARGE_INTEGER time = SK_CurrentPerf ();
+   
+     time.QuadPart -= static_cast <LONGLONG> (delta * freq);
+   
+     return time;
+   };
 
 LARGE_INTEGER
 SK_QueryPerf (void)
@@ -84,67 +84,70 @@ void
 WINAPI
 Sleep_Detour (DWORD dwMilliseconds)
 {
-  //bool bIsCallerGame = (SK_GetCallingDLL () == GetModuleHandle (nullptr));
+  // SteamAPI has some unusual logic that will fail if a call to Sleep (...)
+  //   is skipped -- if the user wants to replace or eliminate sleep from the
+  //     render / window thread for better frame pacing, we have to wait for
+  //       Steam first!
+  if (SK_GetFramesDrawn () < 30)
+    return Sleep_Original (dwMilliseconds);
 
-  //if (bIsCallerGame)
-  //{
-    BOOL bGUIThread    = IsGUIThread (FALSE);
-    BOOL bRenderThread = (SK_GetCurrentRenderBackend ().thread == GetCurrentThreadId ());
+  BOOL bGUIThread    = IsGUIThread (FALSE);
+  BOOL bRenderThread = (SK_GetCurrentRenderBackend ().thread == GetCurrentThreadId ());
 
-    if (bRenderThread)
+  if (bRenderThread)
+  {
+    if (config.render.framerate.sleepless_render && dwMilliseconds != INFINITE)
     {
-      if (config.render.framerate.sleepless_render && dwMilliseconds != INFINITE)
-      {
-        static bool reported = false;
-              if (! reported)
-              {
-                dll_log.Log (L"[FrameLimit] Sleep called from render thread: %lu ms!", dwMilliseconds);
-                reported = true;
-              }
+      static bool reported = false;
+            if (! reported)
+            {
+              dll_log.Log (L"[FrameLimit] Sleep called from render thread: %lu ms!", dwMilliseconds);
+              reported = true;
+            }
 
-        SK::Framerate::events.getRenderThreadStats ().wake (dwMilliseconds);
+      SK::Framerate::events.getRenderThreadStats ().wake (dwMilliseconds);
 
-        if (bGUIThread)
-          SK::Framerate::events.getMessagePumpStats ().wake (dwMilliseconds);
+      if (bGUIThread)
+        SK::Framerate::events.getMessagePumpStats ().wake (dwMilliseconds);
 
-        if (dwMilliseconds <= 1)
-          SleepEx (0, TRUE);
+      if (dwMilliseconds <= 1)
+        SleepEx (0, TRUE);
 
-        return;
-      }
-
-      SK::Framerate::events.getRenderThreadStats ().sleep  (dwMilliseconds);
+      return;
     }
 
-    if (bGUIThread)
+    SK::Framerate::events.getRenderThreadStats ().sleep  (dwMilliseconds);
+  }
+
+  if (bGUIThread)
+  {
+    if (config.render.framerate.sleepless_window && dwMilliseconds != INFINITE)
     {
-      if (config.render.framerate.sleepless_window && dwMilliseconds != INFINITE)
-      {
-        static bool reported = false;
-              if (! reported)
-              {
-                dll_log.Log (L"[FrameLimit] Sleep called from GUI thread: %lu ms!", dwMilliseconds);
-                reported = true;
-              }
+      static bool reported = false;
+            if (! reported)
+            {
+              dll_log.Log (L"[FrameLimit] Sleep called from GUI thread: %lu ms!", dwMilliseconds);
+              reported = true;
+            }
 
-        SK::Framerate::events.getMessagePumpStats ().wake   (dwMilliseconds);
+      SK::Framerate::events.getMessagePumpStats ().wake   (dwMilliseconds);
 
-        if (bRenderThread)
-          SK::Framerate::events.getMessagePumpStats ().wake (dwMilliseconds);
+      if (bRenderThread)
+        SK::Framerate::events.getMessagePumpStats ().wake (dwMilliseconds);
 
-        MsgWaitForMultipleObjects (0, nullptr, FALSE, dwMilliseconds, QS_ALLINPUT);
+      MsgWaitForMultipleObjects (0, nullptr, FALSE, dwMilliseconds, QS_ALLINPUT);
 
-        return;
-      }
-
-      SK::Framerate::events.getMessagePumpStats ().sleep (dwMilliseconds);
+      return;
     }
-  //}
+
+    SK::Framerate::events.getMessagePumpStats ().sleep (dwMilliseconds);
+  }
 
   //if (config.framerate.yield_processor && dwMilliseconds == 0)
   if (dwMilliseconds == 0)
   {
-    SleepEx (0, TRUE);
+    YieldProcessor ();
+  //SleepEx (0, TRUE);
     return;
   }
 
@@ -152,13 +155,15 @@ Sleep_Detour (DWORD dwMilliseconds)
 #ifdef DUAL_USE_MAX_DELTA
   // TODO: Stop this nonsense and make an actual parameter for this...
   //         (min sleep?)
-  if (dwMilliseconds >= (DWORD)config.render.framerate.max_delta_time)
+  if ( static_cast <DWORD> (config.render.framerate.max_delta_time) <=
+                            dwMilliseconds
+     )
   {
     //if (dwMilliseconds == 0)
       //return YieldProcessor ();
 #endif
 
-    Sleep_Original (dwMilliseconds);
+    SleepEx (dwMilliseconds, TRUE);
 #ifdef DUAL_USE_MAX_DELTA
   }
 #endif
@@ -261,10 +266,10 @@ SK::Framerate::Init (void)
       ULONG min, max, cur;
       NtQueryTimerResolution (&min, &max, &cur);
       dll_log.Log ( L"[  Timing  ] Kernel resolution.: %f ms",
-                      (float)(cur * 100)/1000000.0f );
+                      static_cast <float> (cur * 100)/1000000.0f );
       NtSetTimerResolution   (max, TRUE,  &cur);
       dll_log.Log ( L"[  Timing  ] New resolution....: %f ms",
-                      (float)(cur * 100)/1000000.0f );
+                      static_cast <float> (cur * 100)/1000000.0f );
 
     }
   }
@@ -312,11 +317,7 @@ SK_D3D9_GetTimingDevice (void)
     if (SUCCEEDED (hr))
     {
       hwnd = 
-      CreateWindowW (L"STATIC", L"Dummy D3D9 Window",
-                       WS_POPUP | WS_MINIMIZEBOX,
-                         CW_USEDEFAULT, CW_USEDEFAULT,
-                           800, 600, 0,
-                             nullptr, nullptr, 0x00 );
+        SK_Win32_CreateDummyWindow ();
 
       D3DPRESENT_PARAMETERS pparams = { };
       
@@ -324,6 +325,7 @@ SK_D3D9_GetTimingDevice (void)
       pparams.BackBufferFormat = D3DFMT_UNKNOWN;
       pparams.hDeviceWindow    = hwnd;
       pparams.Windowed         = TRUE;
+      pparams.BackBufferCount  = 2;
       
       if ( FAILED ( pD3D9Ex->CreateDeviceEx (
                       D3DADAPTER_DEFAULT,
@@ -369,13 +371,16 @@ SK::Framerate::Limiter::init (double target)
 
   SK_RenderAPI api = rb.api;
 
-  if (      api ==      SK_RenderAPI::D3D10 ||
-       (int)api &  (int)SK_RenderAPI::D3D11 ||
-       (int)api &  (int)SK_RenderAPI::D3D12 )
+  if (                    api ==                    SK_RenderAPI::D3D10  ||
+       static_cast <int> (api) & static_cast <int> (SK_RenderAPI::D3D11) ||
+       static_cast <int> (api) & static_cast <int> (SK_RenderAPI::D3D12) )
   {
     if (rb.swapchain != nullptr)
     {
-      if (SUCCEEDED (rb.swapchain->QueryInterface <IDXGISwapChain> (&dxgi_swap)))
+      HRESULT hr =
+        rb.swapchain->QueryInterface <IDXGISwapChain> (&dxgi_swap);
+
+      if (SUCCEEDED (hr))
       {
         if (SUCCEEDED (dxgi_swap->GetContainingOutput (&dxgi_output)))
         {
@@ -386,7 +391,7 @@ SK::Framerate::Limiter::init (double target)
     }
   }
 
-  else if ((int)api & (int)SK_RenderAPI::D3D9)
+  else if (static_cast <int> (api) & static_cast <int> (SK_RenderAPI::D3D9))
   {
     if (rb.device != nullptr)
     {
@@ -410,8 +415,8 @@ SK::Framerate::Limiter::init (double target)
   time.QuadPart = 0ULL;
   last.QuadPart = 0ULL;
 
-  last.QuadPart = (LONGLONG)(start.QuadPart - (ms / 1000.0) * freq.QuadPart);
-  next.QuadPart = (LONGLONG)(start.QuadPart + (ms / 1000.0) * freq.QuadPart);
+  last.QuadPart = static_cast <LONGLONG> (start.QuadPart - (ms / 1000.0) * freq.QuadPart);
+  next.QuadPart = static_cast <LONGLONG> (start.QuadPart + (ms / 1000.0) * freq.QuadPart);
 }
 
 bool
@@ -424,7 +429,10 @@ SK::Framerate::Limiter::try_wait (void)
 
   next_.QuadPart =
     static_cast <LONGLONG> (
-      ( start.QuadPart + (double)(frames+1) * (ms / 1000.0) * (double)freq.QuadPart )
+      start.QuadPart                               +
+        static_cast <long double> (  frames + 1  ) *
+                                  ( ms  / 1000.0 ) *
+        static_cast <long double> ( freq.QuadPart)
     );
 
   QueryPerformanceCounter_Original (&time);
@@ -434,6 +442,10 @@ SK::Framerate::Limiter::try_wait (void)
 
   return false;
 }
+
+bool  SK_Framerate_Busy       = true; // Keep original behavior
+bool  SK_Framerate_YieldOnce  = true;
+float SK_Framerate_WaitScalar = 28.0f;
 
 void
 SK::Framerate::Limiter::wait (void)
@@ -452,13 +464,20 @@ SK::Framerate::Limiter::wait (void)
   QueryPerformanceCounter_Original (&time);
 
   // Actual frametime before we forced a delay
-  effective_ms = 1000.0 * ((double)(time.QuadPart - last.QuadPart) / (double)freq.QuadPart);
+  effective_ms =
+    1000.0 * ( static_cast <double> (time.QuadPart - last.QuadPart) /
+               static_cast <double> (freq.QuadPart)                 );
 
-  if ((double)(time.QuadPart - next.QuadPart) / (double)freq.QuadPart / (ms / 1000.0) > (config.render.framerate.limiter_tolerance * fps))
+  if ( static_cast <double> (time.QuadPart - next.QuadPart) /
+       static_cast <double> (freq.QuadPart)                 /
+                            ( ms / 1000.0 )                 >
+      ( config.render.framerate.limiter_tolerance * fps )
+     )
   {
     //dll_log.Log ( L" * Frame ran long (%3.01fx expected) - restarting"
                   //L" limiter...",
-            //(double)(time.QuadPart - next.QuadPart) / (double)freq.QuadPart / (ms / 1000.0) / fps );
+            //(double)(time.QuadPart - next.QuadPart) /
+            //(double)freq.QuadPart / (ms / 1000.0) / fps );
     restart = true;
 
 #if 0
@@ -476,7 +495,11 @@ SK::Framerate::Limiter::wait (void)
   if (restart || full_restart)
   {
     frames         = 0;
-    start.QuadPart = static_cast <LONGLONG> ((double)time.QuadPart + (ms / 1000.0) * (double)freq.QuadPart);
+    start.QuadPart = static_cast <LONGLONG> (
+                       static_cast <double> (time.QuadPart) +
+                                            ( ms / 1000.0 ) *
+                       static_cast <double> (freq.QuadPart)
+                     );
     restart        = false;
 
     if (full_restart)
@@ -489,7 +512,10 @@ SK::Framerate::Limiter::wait (void)
 
   next.QuadPart =
     static_cast <LONGLONG> (
-      ( ((double)start.QuadPart + (double)frames * (ms / 1000.0) * (double)freq.QuadPart) )
+      static_cast <long double> (start.QuadPart) +
+      static_cast <long double> (    frames    ) *
+                                (  ms / 1000.0 ) *
+      static_cast <long double> ( freq.QuadPart)
     );
 
   if (next.QuadPart > 0ULL)
@@ -508,55 +534,121 @@ SK::Framerate::Limiter::wait (void)
     {
       SK_RenderAPI api = rb.api;
 
-      if (      api ==      SK_RenderAPI::D3D10 ||
-           (int)api &  (int)SK_RenderAPI::D3D11 ||
-           (int)api &  (int)SK_RenderAPI::D3D12 )
+      if (                    api ==                    SK_RenderAPI::D3D10  ||
+           static_cast <int> (api) & static_cast <int> (SK_RenderAPI::D3D11) ||
+           static_cast <int> (api) & static_cast <int> (SK_RenderAPI::D3D12) )
       {
         if (rb.swapchain != nullptr)
         {
-          if (SUCCEEDED (rb.swapchain->QueryInterface <IDXGISwapChain> (&dxgi_swap)))
+          HRESULT hr =
+            rb.swapchain->QueryInterface <IDXGISwapChain> (&dxgi_swap);
+
+          if (SUCCEEDED (hr))
           {
             dxgi_swap->GetContainingOutput (&dxgi_output);
           }
         }
       }
 
-      else if ((int)api & (int)SK_RenderAPI::D3D9)
+      else if (static_cast <int> (api) & static_cast <int> (SK_RenderAPI::D3D9))
       {
         if (rb.device != nullptr)
         {
           if (FAILED (rb.device->QueryInterface ( IID_PPV_ARGS (&d3d9ex) )))
           {
-            d3d9ex = SK_D3D9_GetTimingDevice ();
+            d3d9ex =
+              SK_D3D9_GetTimingDevice ();
           }
         }
       }
     }
 
-//    const float target_ms = target_fps / 1000.0f;
+    bool bGUI =
+      IsGUIThread (FALSE);
+
+    HWND hWndThis =
+      bGUI ? GetActiveWindow () :
+             HWND_DESKTOP;
+
+    bool bUnicode =
+      bGUI ? IsWindowUnicode (hWndThis) :
+             false;
+
+    auto PeekAndDispatch =
+    [&]
+    {
+      MSG msg     = {      };
+      msg.hwnd    = hWndThis;
+      msg.message = WM_NULL ;
+
+      if (bUnicode)
+      {
+        if (PeekMessageW   (&msg, hWndThis, 0, 0, PM_REMOVE))
+          DispatchMessageW (&msg);
+      }
+
+      else
+      {
+        if (PeekMessageA   (&msg, hWndThis, 0, 0, PM_REMOVE))
+          DispatchMessageA (&msg);
+      }
+    };
+
+
+    bool bYielded = false;
 
     while (time.QuadPart < next.QuadPart)
     {
-#if 0
-      if ((double)(next.QuadPart - time.QuadPart) > (0.0166667 * (double)freq.QuadPart))
-        Sleep_Original (10);
-#else
-      if (config.render.framerate.wait_for_vblank && (double)(next.QuadPart - time.QuadPart) > (0.001 * (1000.0 / target_fps) * (double)freq.QuadPart) * 0.555)
+      // Attempt to use a deeper sleep when possible instead of hammering the
+      //   CPU into submission ;)
+      if ( ( static_cast <double> (next.QuadPart  - time.QuadPart) >
+                 ( 0.001        * (1000.0         / target_fps) *
+             static_cast <double> (freq.QuadPart) * 0.555 ) )      &&
+                                  (! (SK_Framerate_YieldOnce && bYielded))
+         )
       {
-        if (d3d9ex != nullptr)
-          d3d9ex->WaitForVBlank (0);
+        if ( config.render.framerate.wait_for_vblank )
+        {
+          if (d3d9ex != nullptr)
+            d3d9ex->WaitForVBlank (0);
 
-        else if (dxgi_output != nullptr)
-          WaitForVBlank_Original (dxgi_output);
-          //dxgi_output->WaitForVBlank ();
+          else if (dxgi_output != nullptr)
+            WaitForVBlank_Original (dxgi_output);
+        }
+
+        else if (! SK_Framerate_Busy)
+        {
+          DWORD dwWaitMS =
+            static_cast <DWORD>
+              ( (SK_Framerate_WaitScalar * 10.0f) / target_fps ); // 10% of full frame
+
+          if (bGUI)
+          {
+            MsgWaitForMultipleObjects (0, nullptr, TRUE, dwWaitMS, QS_ALLINPUT);
+            PeekAndDispatch           (                                       );
+          }
+
+          else
+            SleepEx              (dwWaitMS,   TRUE);
+        }
+
+        bYielded = true;
+        QueryPerformanceCounter_Original (&time);
+
+        continue;
       }
-#endif
+
+      if (bGUI)
+      {
+        PeekAndDispatch ();
+      }
 
       QueryPerformanceCounter_Original (&time);
     }
   }
 
-  else {
+  else
+  {
     dll_log.Log (L"[FrameLimit] Framerate limiter lost time?! (non-monotonic clock)");
     start.QuadPart += -next.QuadPart;
   }
@@ -598,8 +690,8 @@ SK::Framerate::Tick (double& dt, LARGE_INTEGER& now)
 
   now = SK_CurrentPerf ();
 
-  dt = (double)(now.QuadPart - last_frame.QuadPart) /
-        (double)SK::Framerate::Stats::freq.QuadPart;
+  dt = static_cast  <double> (now.QuadPart - last_frame.QuadPart) /
+        static_cast <double> (SK::Framerate::Stats::freq.QuadPart);
 
   last_frame = now;
 };

@@ -32,8 +32,11 @@
 
 #include <SpecialK/DLL_VERSION.H>
 #include <SpecialK/input/input.h>
+#include <SpecialK/widgets/widget.h>
 
 #include <unordered_map>
+
+#include <Shlwapi.h>
 
 #define D3D11_RAISE_FLAG_DRIVER_INTERNAL_ERROR 1
 
@@ -340,6 +343,36 @@ SK_LoadConfig (std::wstring name) {
   return SK_LoadConfigEx (name);
 }
 
+
+SK_AppCache_Manager app_cache_mgr;
+
+const wchar_t*
+__stdcall
+SK_GetNaiveConfigPath (void);
+
+extern const wchar_t*
+SK_GetFullyQualifiedApp (void);
+
+__declspec (noinline)
+const wchar_t*
+__stdcall
+SK_GetConfigPath (void)
+{
+  static bool init = false;
+
+  if (! init)
+  {
+    app_cache_mgr.loadAppCacheForExe (SK_GetFullyQualifiedApp ());
+    init = true;
+  }
+
+  static std::wstring path =
+    app_cache_mgr.getConfigPathFromAppPath (SK_GetFullyQualifiedApp ());
+
+  return path.c_str ();
+}
+
+
 bool
 SK_LoadConfigEx (std::wstring name, bool create)
 {
@@ -347,6 +380,7 @@ SK_LoadConfigEx (std::wstring name, bool create)
   std::wstring full_name;
   std::wstring osd_config;
   std::wstring achievement_config;
+
 
   full_name = SK_GetConfigPath () +
                 name              +
@@ -376,17 +410,17 @@ SK_LoadConfigEx (std::wstring name, bool create)
   if (! init)
   {
    dll_ini =
-    new iSK_INI (full_name.c_str ());
+    SK_CreateINI (full_name.c_str ());
 
   empty    = dll_ini->get_sections ().empty ();
 
   SK_CreateDirectories (osd_config.c_str ());
 
   osd_ini =
-    new iSK_INI (osd_config.c_str ());
+    SK_CreateINI (osd_config.c_str ());
 
   achievement_ini =
-    new iSK_INI (achievement_config.c_str ());
+    SK_CreateINI (achievement_config.c_str ());
 
   //
   // Create Parameters
@@ -2150,7 +2184,8 @@ SK_LoadConfigEx (std::wstring name, bool create)
     Sacred2,              // sacred2.exe
     FinalFantasy9,        // FF9.exe   
     EdithFinch,           // FinchGame.exe
-    FinalFantasyX_X2      // FFX.exe / FFX-2.exe
+    FinalFantasyX_X2,     // FFX.exe / FFX-2.exe
+    DeadlyPremonition     // DP.exe DPLauncher.exe
   };
 
   static std::unordered_map <std::wstring, SK_GAME_ID> games;
@@ -2178,6 +2213,7 @@ SK_LoadConfigEx (std::wstring name, bool create)
   games.emplace ( L"FinchGame.exe",                SK_GAME_ID::EdithFinch           );
   games.emplace ( L"FFX.exe",                      SK_GAME_ID::FinalFantasyX_X2     );
   games.emplace ( L"FFX-2.exe",                    SK_GAME_ID::FinalFantasyX_X2     );
+  games.emplace ( L"DP.exe",                       SK_GAME_ID::DeadlyPremonition    );
 
   //
   // Application Compatibility Overrides
@@ -2394,6 +2430,17 @@ SK_LoadConfigEx (std::wstring name, bool create)
         //  Excessively lenghty startup is followed by actual SteamAPI init eventually...
         config.steam.auto_pump_callbacks = false;
         break;
+
+
+#ifndef _WIN64
+      case SK_GAME_ID::DeadlyPremonition:
+        config.steam.force_load_steamapi       = true;
+        config.apis.d3d9.hook                  = true;
+        config.apis.d3d9ex.hook                = false;
+        config.apis.d3d8.hook                  = false;
+        config.input.mouse.add_relative_motion = false;
+        break;
+#endif
     }
   }
 
@@ -3650,6 +3697,8 @@ SK_SaveConfig ( std::wstring name,
   lstrcatW (wszFullName,       name.c_str ());
   lstrcatW (wszFullName,             L".ini");
 
+  SK_ImGui_Widgets.SaveConfig ();
+
   dll_ini->write ( wszFullName );
   osd_ini->write ( std::wstring ( SK_GetDocumentsDir () +
                      L"\\My Mods\\SpecialK\\Global\\osd.ini"
@@ -3695,6 +3744,11 @@ std::unordered_map <BYTE, std::wstring> virtKeyCodeToHumanKeyName;
 
 #include <queue>
 
+#define SK_MakeKeyMask(vKey,ctrl,shift,alt) \
+  (UINT)((vKey) | (((ctrl) != 0) <<  9) |   \
+                  (((shift)!= 0) << 10) |   \
+                  (((alt)  != 0) << 11))
+
 void
 SK_Keybind::update (void)
 {
@@ -3726,6 +3780,8 @@ SK_Keybind::update (void)
     if (! words.empty ())
       human_readable += L"+";
   }
+
+  masked_code = SK_MakeKeyMask (vKey & 0xFF, ctrl, shift, alt);
 }
 
 void
@@ -3737,6 +3793,8 @@ SK_Keybind::parse (void)
 
   if (! init)
   {
+    init = true;
+
     for (int i = 0; i < 0xFF; i++)
     {
       wchar_t name [32] = { };
@@ -3797,32 +3855,48 @@ SK_Keybind::parse (void)
       }
 
     
-      if ( i != VK_CONTROL && i != VK_MENU     &&
-           i != VK_SHIFT   && i != VK_OEM_PLUS && i != VK_OEM_MINUS )
+      if ( i != VK_CONTROL  && i != VK_MENU     &&
+           i != VK_SHIFT    && i != VK_OEM_PLUS && i != VK_OEM_MINUS &&
+           i != VK_LSHIFT   && i != VK_RSHIFT   &&
+           i != VK_LCONTROL && i != VK_RCONTROL &&
+           i != VK_LMENU    && i != VK_RMENU )
       {
-        humanKeyNameToVirtKeyCode [   name] = (BYTE)i;
-        virtKeyCodeToHumanKeyName [(BYTE)i] =    name;
+
+        humanKeyNameToVirtKeyCode.emplace (name, (BYTE)i);
+        virtKeyCodeToHumanKeyName.emplace ((BYTE)i, name);
       }
     }
     
-    humanKeyNameToVirtKeyCode [L"Plus"]  = VK_OEM_PLUS;
-    humanKeyNameToVirtKeyCode [L"Minus"] = VK_OEM_MINUS;
-    humanKeyNameToVirtKeyCode [L"Ctrl"]  = VK_CONTROL;
-    humanKeyNameToVirtKeyCode [L"Alt"]   = VK_MENU;
-    humanKeyNameToVirtKeyCode [L"Shift"] = VK_SHIFT;
+    humanKeyNameToVirtKeyCode.emplace (L"Plus",        (BYTE)VK_OEM_PLUS);
+    humanKeyNameToVirtKeyCode.emplace (L"Minus",       (BYTE)VK_OEM_MINUS);
+    humanKeyNameToVirtKeyCode.emplace (L"Ctrl",        (BYTE)VK_CONTROL);
+    humanKeyNameToVirtKeyCode.emplace (L"Alt",         (BYTE)VK_MENU);
+    humanKeyNameToVirtKeyCode.emplace (L"Shift",       (BYTE)VK_SHIFT);
+    humanKeyNameToVirtKeyCode.emplace (L"Left Shift",  (BYTE)VK_LSHIFT);
+    humanKeyNameToVirtKeyCode.emplace (L"Right Shift", (BYTE)VK_RSHIFT);
+    humanKeyNameToVirtKeyCode.emplace (L"Left Alt",    (BYTE)VK_LMENU);
+    humanKeyNameToVirtKeyCode.emplace (L"Right Alt",   (BYTE)VK_RMENU);
+    humanKeyNameToVirtKeyCode.emplace (L"Left Ctrl",   (BYTE)VK_LCONTROL);
+    humanKeyNameToVirtKeyCode.emplace (L"Right Ctrl",  (BYTE)VK_RCONTROL);
     
-    virtKeyCodeToHumanKeyName [VK_CONTROL]    = L"Ctrl";
-    virtKeyCodeToHumanKeyName [VK_MENU]       = L"Alt";
-    virtKeyCodeToHumanKeyName [VK_SHIFT]      = L"Shift";
-    virtKeyCodeToHumanKeyName [VK_OEM_PLUS]   = L"Plus";
-    virtKeyCodeToHumanKeyName [VK_OEM_MINUS]  = L"Minus";
+    virtKeyCodeToHumanKeyName.emplace ((BYTE)VK_CONTROL,   L"Ctrl");
+    virtKeyCodeToHumanKeyName.emplace ((BYTE)VK_MENU,      L"Alt");
+    virtKeyCodeToHumanKeyName.emplace ((BYTE)VK_SHIFT,     L"Shift");
+    virtKeyCodeToHumanKeyName.emplace ((BYTE)VK_OEM_PLUS,  L"Plus");
+    virtKeyCodeToHumanKeyName.emplace ((BYTE)VK_OEM_MINUS, L"Minus");
+    virtKeyCodeToHumanKeyName.emplace ((BYTE)VK_LSHIFT,    L"Left Shift");
+    virtKeyCodeToHumanKeyName.emplace ((BYTE)VK_RSHIFT,    L"Right Shift");
+    virtKeyCodeToHumanKeyName.emplace ((BYTE)VK_LMENU,     L"Left Alt");
+    virtKeyCodeToHumanKeyName.emplace ((BYTE)VK_RMENU,     L"Right Alt");  
+    virtKeyCodeToHumanKeyName.emplace ((BYTE)VK_LCONTROL,  L"Left Ctrl"); 
+    virtKeyCodeToHumanKeyName.emplace ((BYTE)VK_RCONTROL,  L"Right Ctrl");
 
     init = true;
   }
 
   wchar_t wszKeyBind [128] = { };
 
-  wcsncat (wszKeyBind, human_readable.c_str (), 127);
+  lstrcatW (wszKeyBind, human_readable.c_str ());
 
   wchar_t* wszBuf = nullptr;
   wchar_t* wszTok = std::wcstok (wszKeyBind, L"+", &wszBuf);
@@ -3833,7 +3907,7 @@ SK_Keybind::parse (void)
 
   if (wszTok == nullptr)
   {
-    vKey  = humanKeyNameToVirtKeyCode [wszKeyBind];
+    vKey = humanKeyNameToVirtKeyCode [wszKeyBind];
   }
 
   while (wszTok)
@@ -3841,14 +3915,256 @@ SK_Keybind::parse (void)
     BYTE vKey_ = humanKeyNameToVirtKeyCode [wszTok];
 
     if (vKey_ == VK_CONTROL)
-      ctrl = true;
+      ctrl  = true;
     else if (vKey_ == VK_SHIFT)
       shift = true;
     else if (vKey_ == VK_MENU)
-      alt = true;
+      alt   = true;
     else
       vKey = vKey_;
 
     wszTok = std::wcstok (nullptr, L"+", &wszBuf);
   }
+
+  masked_code = SK_MakeKeyMask (vKey & 0xFF, ctrl, shift, alt);
+}
+
+
+
+
+#include <SpecialK/utility.h>
+
+
+bool
+SK_AppCache_Manager::loadAppCacheForExe (const wchar_t* wszExe)
+{
+  std::wstring naive_name =
+    SK_GetNaiveConfigPath ();
+
+  wchar_t* wszPath =
+    StrStrIW (wszExe, L"SteamApps\\common\\");
+
+  if (wszPath != nullptr)
+  {
+    wchar_t* wszRelPath =
+      _wcsdup (CharNextW (StrStrIW (CharNextW (StrStrIW (wszPath, L"\\")), L"\\")));
+
+    PathRemoveFileSpecW (wszRelPath);
+
+    std::wstring wstr_appcache =
+     SK_FormatStringW ( L"%s\\..\\AppCache\\%s\\SpecialK.AppCache",
+                          naive_name.c_str (),
+                            wszRelPath );
+
+    SK_CreateDirectories (wstr_appcache.c_str ());
+
+    app_cache_db =
+      SK_CreateINI (wstr_appcache.c_str ());
+
+    app_cache_db->write (app_cache_db->get_filename ());
+
+    free (wszRelPath);
+  }
+
+  if (app_cache_db != nullptr)
+    return true;
+
+  return false;
+}
+
+uint32_t
+SK_AppCache_Manager::getAppIDFromPath (const wchar_t* wszPath) const
+{
+  if (app_cache_db == nullptr)
+    return 0;
+
+  iSK_INISection&
+    fwd_map =
+      app_cache_db->get_section (L"AppID_Cache.FwdMap");
+
+  wchar_t* wszSteamApps =
+    StrStrIW (wszPath, L"SteamApps\\common\\");
+
+  if (wszSteamApps != nullptr)
+  {
+    wchar_t* wszRelPath =
+      CharNextW (StrStrIW (CharNextW (StrStrIW (wszSteamApps, L"\\")), L"\\"));
+
+    if (fwd_map.contains_key (wszRelPath))
+    {
+      return _wtoi (fwd_map.get_value (wszRelPath).c_str ());
+    }
+  }
+
+  return 0;
+}
+
+std::wstring
+SK_AppCache_Manager::getAppNameFromID (uint32_t uiAppID) const
+{
+  if (app_cache_db == nullptr)
+    return L"";
+
+  iSK_INISection&
+    name_map =
+      app_cache_db->get_section (L"AppID_Cache.Names");
+
+  if (name_map.contains_key   (SK_FormatStringW (L"%u", uiAppID).c_str ()))
+  {
+    return name_map.get_value (SK_FormatStringW (L"%u", uiAppID).c_str ());
+  }
+
+  return L"";
+}
+
+std::wstring
+SK_AppCache_Manager::getAppNameFromPath (const wchar_t* wszPath) const
+{
+  uint32_t uiAppID = getAppIDFromPath (wszPath);
+
+  if (uiAppID != 0)
+  {
+    return getAppNameFromID (uiAppID);
+  }
+
+  return L"";
+}
+
+bool
+SK_AppCache_Manager::addAppToCache ( const wchar_t* wszFullPath,
+                                     const wchar_t*,
+                                     const wchar_t* wszAppName,
+                                           uint32_t uiAppID )
+{
+  if (! app_cache_db)
+    return false;
+
+  if (! StrStrIW (wszFullPath, L"SteamApps\\common\\"))
+      return false;
+
+  iSK_INISection& rev_map =
+    app_cache_db->get_section (L"AppID_Cache.RevMap");
+  iSK_INISection& fwd_map =
+    app_cache_db->get_section (L"AppID_Cache.FwdMap");
+  iSK_INISection& name_map =
+    app_cache_db->get_section (L"AppID_Cache.Names");
+
+
+  wchar_t* wszRelativePath = _wcsdup (wszFullPath);
+
+  wchar_t* wszRelPath =
+    CharNextW (StrStrIW (CharNextW (StrStrIW (StrStrIW (wszRelativePath, L"SteamApps\\common\\"), L"\\")), L"\\"));
+
+  if (fwd_map.contains_key (wszRelPath))
+    fwd_map.get_value (wszRelPath) = SK_FormatStringW   (L"%u", uiAppID).c_str ();
+  else
+    fwd_map.add_key_value (wszRelPath, SK_FormatStringW (L"%u", uiAppID).c_str ());
+
+
+  if (rev_map.contains_key (SK_FormatStringW  (L"%u", uiAppID).c_str ()))
+    rev_map.get_value (SK_FormatStringW       (L"%u", uiAppID).c_str ()) = wszRelPath;
+  else
+    rev_map.add_key_value (SK_FormatStringW   (L"%u", uiAppID).c_str (), wszRelPath);
+
+
+  if (name_map.contains_key (SK_FormatStringW (L"%u", uiAppID).c_str ()))
+    name_map.get_value (SK_FormatStringW      (L"%u", uiAppID).c_str ()) = wszAppName;
+  else
+    name_map.add_key_value (SK_FormatStringW  (L"%u", uiAppID).c_str (), wszAppName);
+
+
+  app_cache_db->write (app_cache_db->get_filename ());
+
+
+  free (wszRelativePath);
+
+  return true;
+}
+
+std::wstring
+SK_AppCache_Manager::getConfigPathFromAppPath (const wchar_t* wszPath) const
+{
+  return getConfigPathForAppID (getAppIDFromPath (wszPath));
+}
+
+#include <unordered_set>
+
+std::wstring
+SK_AppCache_Manager::getConfigPathForAppID (uint32_t uiAppID) const
+{
+  // If no AppCache (probably not a Steam game), or opting-out of central repo,
+  //   then don't parse crap and just use the traditional path.
+  if ( app_cache_db == nullptr || (! config.system.central_repository) )
+    return SK_GetNaiveConfigPath ();
+
+  std::wstring path = SK_GetNaiveConfigPath (       );
+  std::wstring name ( getAppNameFromID      (uiAppID) );
+
+  // Non-trivial name = custom path, remove the old-style <program.exe>
+  if (name != L"")
+  {
+    std::wstring         original_dir (path);
+
+    size_t       pos                     = 0;
+    std::wstring host_app (SK_GetHostApp ());
+
+    if ((pos = path.find (SK_GetHostApp (), pos)) != std::wstring::npos)
+      path.replace (pos, host_app.length (), L"");
+
+    name.erase ( std::remove_if ( name.begin (),
+                                  name.end   (),
+
+                                    [](wchar_t tval)
+                                    {
+                                      static
+                                      const std::unordered_set <wchar_t>
+                                        invalid_file_char =
+                                        {
+                                          L'\\', L'/', L':',
+                                          L'*',  L'?', L'\"',
+                                          L'<',  L'>', L'|'
+                                        };
+
+                                      return invalid_file_char.count (tval) > 0;
+                                    }
+                                ),
+
+                     name.end ()
+               );
+
+    path += name;
+    path += L"\\";
+
+    MoveFileExW ( original_dir.c_str (),
+                    path.c_str       (),
+                      MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED );
+  }
+
+  return path;
+}
+
+bool
+SK_AppCache_Manager::saveAppCache (bool close)
+{
+  if (app_cache_db != nullptr)
+  {
+    app_cache_db->write (app_cache_db->get_filename ());
+
+    if (close)
+    {
+      delete app_cache_db;
+      app_cache_db = nullptr;
+    }
+
+    return true;
+  }
+
+  return false;
+}
+
+int
+SK_AppCache_Manager::migrateProfileData (LPVOID)
+{
+  // TODO
+  return 0;
 }

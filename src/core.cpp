@@ -74,6 +74,8 @@
 #include <SpecialK/update/version.h>
 #include <SpecialK/update/network.h>
 
+#include <SpecialK/widgets/widget.h>
+
 #include <atlbase.h>
 #include <comdef.h>
 #include <delayimp.h>
@@ -147,10 +149,16 @@ SK_SetConfigPath (const wchar_t* path)
   lstrcpyW (SK_ConfigPath, path);
 }
 
+
+const wchar_t*
+__stdcall
+SK_GetConfigPath (void);
+
+
 __declspec (noinline)
 const wchar_t*
 __stdcall
-SK_GetConfigPath (void)
+SK_GetNaiveConfigPath (void)
 {
   return SK_ConfigPath;
 }
@@ -488,7 +496,7 @@ SK_StartPerfMonThreads (void)
     }
   }
 
-  if (config.cpu.show || SK_ImGui_Widgets.cpumon)
+  if (config.cpu.show || SK_ImGui_Widgets.cpu_monitor->isActive ())
   {
     //
     // Spawn CPU Refresh Thread
@@ -636,113 +644,121 @@ skMemCmd::execute (const char* szArgs)
 
   if (base_addr == nullptr)
   {
-    base_addr = (uint8_t *)GetModuleHandle (nullptr);
+    base_addr = reinterpret_cast <uint8_t *> (GetModuleHandle (nullptr));
 
     MEMORY_BASIC_INFORMATION basic_mem_info;
     VirtualQuery (base_addr, &basic_mem_info, sizeof basic_mem_info);
 
-    base_addr = (uint8_t *)basic_mem_info.BaseAddress;
+    base_addr = reinterpret_cast <uint8_t *> (basic_mem_info.BaseAddress);
   }
 
-  addr += (uintptr_t)base_addr;
+  addr += reinterpret_cast <uintptr_t> (base_addr);
 
   char result [512] = { };
 
-  switch (type) {
+  switch (type)
+  {
     case 'b':
-      if (strlen (val)) {
+      if (strlen (val))
+      {
         DWORD dwOld;
 
-        VirtualProtect ((LPVOID)addr, 1, PAGE_EXECUTE_READWRITE, &dwOld);
+        VirtualProtect (reinterpret_cast <LPVOID> (addr), 1, PAGE_EXECUTE_READWRITE, &dwOld);
           uint8_t out;
           sscanf (val, "%cx", &out);
-          *(uint8_t *)addr = out;
-        VirtualProtect ((LPVOID)addr, 1, dwOld, &dwOld);
+          *reinterpret_cast <uint8_t *> (addr) = out;
+        VirtualProtect (reinterpret_cast <LPVOID> (addr), 1, dwOld, &dwOld);
       }
 
-      sprintf (result, "%u", *(uint8_t *)addr);
+      sprintf (result, "%u", *reinterpret_cast <uint8_t *> (addr));
 
       return SK_ICommandResult ("mem", szArgs, result, 1);
       break;
     case 's':
-      if (strlen (val)) {
+      if (strlen (val))
+      {
         DWORD dwOld;
 
-        VirtualProtect ((LPVOID)addr, 2, PAGE_EXECUTE_READWRITE, &dwOld);
+        VirtualProtect (reinterpret_cast <LPVOID> (addr), 2, PAGE_EXECUTE_READWRITE, &dwOld);
           uint16_t out;
           sscanf (val, "%hx", &out);
-          *(uint16_t *)addr = out;
-        VirtualProtect ((LPVOID)addr, 2, dwOld, &dwOld);
+          *reinterpret_cast <uint16_t *> (addr) = out;
+        VirtualProtect (reinterpret_cast <LPVOID> (addr), 2, dwOld, &dwOld);
       }
 
-      sprintf (result, "%u", *(uint16_t *)addr);
+      sprintf (result, "%u", *reinterpret_cast <uint16_t *> (addr));
       return SK_ICommandResult ("mem", szArgs, result, 1);
       break;
     case 'i':
-      if (strlen (val)) {
+      if (strlen (val))
+      {
         DWORD dwOld;
 
-        VirtualProtect ((LPVOID)addr, 4, PAGE_EXECUTE_READWRITE, &dwOld);
+        VirtualProtect (reinterpret_cast <LPVOID> (addr), 4, PAGE_EXECUTE_READWRITE, &dwOld);
           uint32_t out;
           sscanf (val, "%x", &out);
-          *(uint32_t *)addr = out;
-        VirtualProtect ((LPVOID)addr, 4, dwOld, &dwOld);
+          *reinterpret_cast <uint32_t *> (addr) = out;
+        VirtualProtect (reinterpret_cast <LPVOID> (addr), 4, dwOld, &dwOld);
       }
 
-      sprintf (result, "%u", *(uint32_t *)addr);
+      sprintf (result, "%u", *reinterpret_cast <uint32_t *> (addr));
       return SK_ICommandResult ("mem", szArgs, result, 1);
       break;
     case 'l':
-      if (strlen (val)) {
+      if (strlen (val))
+      {
         DWORD dwOld;
 
-        VirtualProtect ((LPVOID)addr, 8, PAGE_EXECUTE_READWRITE, &dwOld);
+        VirtualProtect (reinterpret_cast <LPVOID> (addr), 8, PAGE_EXECUTE_READWRITE, &dwOld);
           uint64_t out;
           sscanf (val, "%llx", &out);
-          *(uint64_t *)addr = out;
-        VirtualProtect ((LPVOID)addr, 8, dwOld, &dwOld);
+          *reinterpret_cast <uint64_t *> (addr) = out;
+        VirtualProtect (reinterpret_cast <LPVOID> (addr), 8, dwOld, &dwOld);
       }
 
-      sprintf (result, "%llu", *(uint64_t *)addr);
+      sprintf (result, "%llu", *reinterpret_cast <uint64_t *> (addr));
       return SK_ICommandResult ("mem", szArgs, result, 1);
       break;
     case 'd':
-      if (strlen (val)) {
+      if (strlen (val))
+      {
         DWORD dwOld;
 
-        VirtualProtect ((LPVOID)addr, 8, PAGE_EXECUTE_READWRITE, &dwOld);
+        VirtualProtect (reinterpret_cast <LPVOID> (addr), 8, PAGE_EXECUTE_READWRITE, &dwOld);
           double out;
           sscanf (val, "%lf", &out);
-          *(double *)addr = out;
-        VirtualProtect ((LPVOID)addr, 8, dwOld, &dwOld);
+          *reinterpret_cast <double *> (addr) = out;
+        VirtualProtect (reinterpret_cast <LPVOID> (addr), 8, dwOld, &dwOld);
       }
 
-      sprintf (result, "%f", *(double *)addr);
+      sprintf (result, "%f", *reinterpret_cast <double *> (addr));
       return SK_ICommandResult ("mem", szArgs, result, 1);
       break;
     case 'f':
-      if (strlen (val)) {
+      if (strlen (val))
+      {
         DWORD dwOld;
 
-        VirtualProtect ((LPVOID)addr, 4, PAGE_EXECUTE_READWRITE, &dwOld);
+        VirtualProtect (reinterpret_cast <LPVOID> (addr), 4, PAGE_EXECUTE_READWRITE, &dwOld);
           float out;
           sscanf (val, "%f", &out);
-          *(float *)addr = out;
-        VirtualProtect ((LPVOID)addr, 4, dwOld, &dwOld);
+          *reinterpret_cast <float *> (addr) = out;
+        VirtualProtect (reinterpret_cast <LPVOID> (addr), 4, dwOld, &dwOld);
       }
 
-      sprintf (result, "%f", *(float *)addr);
+      sprintf (result, "%f", *reinterpret_cast <float *> (addr));
       return SK_ICommandResult ("mem", szArgs, result, 1);
       break;
     case 't':
-      if (strlen (val)) {
+      if (strlen (val))
+      {
         DWORD dwOld;
 
-        VirtualProtect ((LPVOID)addr, 256, PAGE_EXECUTE_READWRITE, &dwOld);
-          strcpy ((char *)addr, val);
-        VirtualProtect ((LPVOID)addr, 256, dwOld, &dwOld);
+        VirtualProtect (reinterpret_cast <LPVOID> (addr), 256, PAGE_EXECUTE_READWRITE, &dwOld);
+          strcpy (reinterpret_cast <char *> (addr), val);
+        VirtualProtect (reinterpret_cast <LPVOID> (addr), 256, dwOld, &dwOld);
       }
-      sprintf (result, "%s", (char *)addr);
+      sprintf (result, "%s", reinterpret_cast <char *> (addr));
       return SK_ICommandResult ("mem", szArgs, result, 1);
       break;
   }
@@ -762,15 +778,6 @@ __stdcall
 SK_InitFinishCallback (void)
 {
   SK_Input_Init ();
-
-
-  //
-  // TEMP HACK: dgVoodoo2
-  //
-  if (SK_GetDLLRole () == DLL_ROLE::D3D8)
-    SK_BootDXGI ();
-  else if (SK_GetDLLRole () == DLL_ROLE::DDraw)
-    SK_BootDXGI ();
 
 
   SK_ApplyQueuedHooks    ();
@@ -825,9 +832,6 @@ SK_InitFinishCallback (void)
 #ifdef _WIN64
   if (! lstrcmpW (SK_GetHostApp (), L"DarkSoulsIII.exe"))
     SK_DS3_InitPlugin ();
-
-  else if (! lstrcmpW (SK_GetHostApp (), L"RiME.exe"))
-    SK_REASON_InitPlugin ();
 #endif
 
   if (lstrcmpW (SK_GetHostApp (), L"Tales of Zestiria.exe"))
@@ -1032,6 +1036,14 @@ SK_InitCore (const wchar_t* backend, void* callback)
   if (! lstrcmpW (SK_GetHostApp (), L"NieRAutomata.exe"))
     SK_FAR_InitPlugin ();
 #endif
+
+  //
+  // TEMP HACK: dgVoodoo2
+  //
+  if (SK_GetDLLRole () == DLL_ROLE::D3D8)
+    SK_BootDXGI ();
+  else if (SK_GetDLLRole () == DLL_ROLE::DDraw)
+    SK_BootDXGI ();
 
 
   SK_ResumeThreads (__SK_Init_Suspended_tids);
@@ -1493,8 +1505,8 @@ SK_StartupCore (const wchar_t* backend, void* callback)
   bool bypass = false;
 
   // Injection Compatibility Menu
-  if ( GetAsyncKeyState (VK_SHIFT) &&
-       GetAsyncKeyState (VK_CONTROL) )
+  if ( (GetAsyncKeyState (VK_SHIFT  ) & 0x8000) != 0 &&
+       (GetAsyncKeyState (VK_CONTROL) & 0x8000) != 0 )
   {
     SK_BypassInject ();
 
@@ -1531,8 +1543,7 @@ SK_StartupCore (const wchar_t* backend, void* callback)
 
   EnterCriticalSection (&init_mutex);
 
-  ZeroMemory (&init_, sizeof init_params_t);
-
+  init_          = {               };
   init_.backend  = _wcsdup (backend);
   init_.callback =          callback;
 
@@ -1553,23 +1564,6 @@ SK_StartupCore (const wchar_t* backend, void* callback)
 
   extern bool SK_Steam_LoadOverlayEarly (void);
   extern void SK_Input_PreInit          (void);
-
-  if (config.steam.preload_overlay)
-  {
-
-    CreateThread (nullptr, 0x00, [](LPVOID user) -> DWORD {
-                                   SK_Steam_LoadOverlayEarly ();
-                                   SK_Input_Init             ();
-
-                                   CloseHandle (GetCurrentThread ());
-
-                                   return 0;
-                                 }, nullptr, 0x00, nullptr);
-  }
-
-  SK::Diagnostics::CrashHandler::InitSyms ();
-
-  SK_Input_PreInit (); // Hook only symbols in user32 and kernel32
 
   budget_log.init ( L"logs\\dxgi_budget.log", L"w" );
 
@@ -1649,6 +1643,24 @@ SK_StartupCore (const wchar_t* backend, void* callback)
     SK::Diagnostics::CrashHandler::Init ();
 
 
+  SK::Diagnostics::CrashHandler::InitSyms ();
+
+  if (config.steam.preload_overlay)
+  {
+
+    CreateThread (nullptr, 0x00, [](LPVOID) -> DWORD {
+                                   SK_Steam_LoadOverlayEarly ();
+                                   SK_Input_Init             ();
+
+                                   CloseHandle (GetCurrentThread ());
+
+                                   return 0;
+                                 }, nullptr, 0x00, nullptr);
+  }
+
+  SK_Input_PreInit (); // Hook only symbols in user32 and kernel32
+
+
   if (config.compatibility.init_while_suspended)
   {
     //
@@ -1718,12 +1730,6 @@ SK_StartupCore (const wchar_t* backend, void* callback)
   // Game won't start from the commandline without this...
   if (! lstrcmpW (SK_GetHostApp (), L"dis1_st.exe"))
     config.steam.appid = 405900;
-
-  if (! lstrcmpW (SK_GetHostApp (), L"FairyFencerAD.exe"))
-  {
-    extern void SK_FFAD_InitPlugin (void);
-    SK_FFAD_InitPlugin ();
-  }
 
   SK_EnumLoadedModules (SK_ModuleEnum::PreLoad);
 
@@ -1811,17 +1817,26 @@ BACKEND_INIT:
     dll_log.LogEx (true, L" Loading default %s.dll: ", backend);
 
   // Pre-Load the original DLL into memory
-  if (dll_name != wszBackendDLL)
-  {
-                  LoadLibraryExW_Original ( wszBackendDLL, nullptr, use_system_dll ?
-                                              LOAD_LIBRARY_SEARCH_SYSTEM32 : 0x00 );
-    backend_dll = LoadLibraryExW_Original (dll_name,      nullptr, 0x0);
-                  GetModuleHandleExW      (GET_MODULE_HANDLE_EX_FLAG_PIN, wszBackendDLL, &backend_dll);
+  if (dll_name != wszBackendDLL) {
+                  LoadLibraryW_Original (wszBackendDLL);
+    backend_dll = LoadLibraryW_Original (dll_name);
   }
 
   else
-    backend_dll = LoadLibraryExW_Original ( dll_name, nullptr, use_system_dll ?
-                                             LOAD_LIBRARY_SEARCH_SYSTEM32 : 0x00);
+    backend_dll = LoadLibraryW_Original (dll_name);
+
+  //// Pre-Load the original DLL into memory
+  //if (dll_name != wszBackendDLL)
+  //{
+  //                LoadLibraryExW_Original ( wszBackendDLL, nullptr, use_system_dll ?
+  //                                            LOAD_LIBRARY_SEARCH_SYSTEM32 : 0x00 );
+  //  backend_dll = LoadLibraryExW_Original (dll_name,      nullptr, 0x0);
+  //                GetModuleHandleExW      (GET_MODULE_HANDLE_EX_FLAG_PIN, wszBackendDLL, &backend_dll);
+  //}
+  //
+  //else
+  //  backend_dll = LoadLibraryExW_Original ( dll_name, nullptr, use_system_dll ?
+  //                                           LOAD_LIBRARY_SEARCH_SYSTEM32 : 0x00);
 
   if (backend_dll != NULL)
     dll_log.LogEx (false, L" (%s)\n", dll_name);
@@ -1982,7 +1997,7 @@ SK_ShutdownCore (const wchar_t* backend)
     dll_log.LogEx   (false, L"done!\n");
   }
 
-  auto ShutdownWMIThread = [](volatile HANDLE& hSignal, volatile HANDLE& hThread, wchar_t* wszName) -> void
+  auto ShutdownWMIThread = [](volatile HANDLE& hSignal, volatile HANDLE& hThread, wchar_t* wszName)
   {
     wchar_t wszFmtName [32] = { };
 
@@ -2017,7 +2032,7 @@ SK_ShutdownCore (const wchar_t* backend)
   if (SK_IsInjected ())
     config_name = L"SpecialK";
 
-  if (sk::NVAPI::app_name != L"ds3t.exe")
+  if (sk::NVAPI::app_name != L"ds3t.exe" && SK_GetFramesDrawn () > 0)
   {
     dll_log.LogEx        (true,  L"[ SpecialK ] Saving user preferences to %10s.ini... ", config_name);
     dwTime = timeGetTime ();
@@ -2052,7 +2067,7 @@ SK_ShutdownCore (const wchar_t* backend)
   dll_log.Log (L"[ SpecialK ] Custom %s.dll Detached (pid=0x%04x)",
     backend, GetCurrentProcessId ());
 
-  SymCleanup (GetCurrentProcess ());
+  //SymCleanup (GetCurrentProcess ());
 
 
   // Breakpad Disable Disclaimer; pretend the log was empty :)

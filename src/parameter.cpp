@@ -242,6 +242,41 @@ sk::ParameterStringW::set_value_str (std::wstring str)
 }
 
 
+
+std::wstring
+sk::ParameterVec2f::get_value_str (void)
+{
+  wchar_t x_str [16] = { };
+  wchar_t y_str [16] = { };
+
+  swprintf (x_str, L"%f", value.x);
+  swprintf (y_str, L"%f", value.y);
+
+  SK_RemoveTrailingDecimalZeros (x_str);
+  SK_RemoveTrailingDecimalZeros (y_str);
+
+  return SK_FormatStringW (L"(%s,%s)", x_str, y_str);
+}
+
+ImVec2
+sk::ParameterVec2f::get_value (void)
+{
+  return value;
+}
+
+void
+sk::ParameterVec2f::set_value (ImVec2 val)
+{
+  value = val;
+}
+
+void
+sk::ParameterVec2f::set_value_str (std::wstring str)
+{
+  swscanf (str.c_str (), L"(%f,%f)", &value.x, &value.y);
+}
+
+
 template <>
 sk::iParameter*
 sk::ParameterFactory::create_parameter <int> (const wchar_t* name)
@@ -313,6 +348,18 @@ sk::ParameterFactory::create_parameter <std::wstring> (const wchar_t* name)
   return param;
 }
 
+template <>
+sk::iParameter*
+sk::ParameterFactory::create_parameter <ImVec2> (const wchar_t* name)
+{
+  UNREFERENCED_PARAMETER (name);
+
+  iParameter* param = new ParameterVec2f ();
+  params.push_back (param);
+
+  return param;
+}
+
 
 #if 0
 bool
@@ -345,7 +392,7 @@ iSK_Parameter::store (void)
     section.set_name (ini_section);
 
     if (section.contains_key (ini_key)) {
-      section.get_value (ini_key) = get_value_str ().c_str ();
+      section.get_value (ini_key) = get_value_str ();
       ret = true;
     }
 

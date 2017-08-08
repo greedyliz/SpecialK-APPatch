@@ -19,6 +19,7 @@
  *
 **/
 
+#define _CRT_SECURE_NO_WARNINGS
 #define NOMINMAX
 
 #include <SpecialK/core.h>
@@ -77,7 +78,7 @@ namespace SK
 
       D3D12_QUERY_DATA_PIPELINE_STATISTICS
                  last_results   = { };
-    } pipeline_stats_d3d11;
+    } pipeline_stats_d3d12;
   };
 };
 

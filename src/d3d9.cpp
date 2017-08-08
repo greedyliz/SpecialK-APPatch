@@ -65,7 +65,7 @@ unsigned int
 __stdcall
 HookD3D9Ex (LPVOID user);
 
-extern volatile ULONG ImGui_Init;
+extern volatile ULONG ImGui_Init = FALSE;
 
 void
 WINAPI
@@ -145,7 +145,7 @@ StretchRect_pfn               D3D9StretchRect_Original               = nullptr;
 SetCursorPosition_pfn         D3D9SetCursorPosition_Original         = nullptr;
 
 
-D3DPRESENT_PARAMETERS    g_D3D9PresentParams          = {  0  };
+D3DPRESENT_PARAMETERS    g_D3D9PresentParams          = {  };
 
 __declspec (noinline)
 HRESULT
@@ -159,11 +159,11 @@ WINAPI D3D9PresentCallback_Pre ( IDirect3DDevice9 *This,
   void** _vftable = *(void***)*(_Base);                                      \
                                                                              \
   if ((_Original) == nullptr) {                                              \
-    SK_CreateVFTableHook ( L##_Name,                                         \
-                             _vftable,                                       \
-                               (_Index),                                     \
-                                 (_Override),                                \
-                                   (LPVOID *)&(_Original));                  \
+    SK_CreateVFTableHook2 ( L##_Name,                                        \
+                              _vftable,                                      \
+                                (_Index),                                    \
+                                  (_Override),                               \
+                                    (LPVOID *)&(_Original));                 \
   }                                                                          \
 }
 
@@ -259,7 +259,7 @@ private:
     osd_vidcap_ =
       SK_CreateVar (
         SK_IVariable::Boolean,
-          (bool *)&config.render.d3d9.osd_in_vidcap,
+          static_cast <bool *> (&config.render.d3d9.osd_in_vidcap),
             this
       );
 
@@ -480,8 +480,8 @@ SK_CEGUI_DrawD3D9 (IDirect3DDevice9* pDev, IDirect3DSwapChain9* pSwapChain)
 
     CEGUI::System::getDllSingleton ().getRenderer ()->setDisplaySize (
         CEGUI::Sizef (
-          (float)(surf_desc.Width),
-            (float)(surf_desc.Height)
+          static_cast <float> (surf_desc.Width),
+          static_cast <float> (surf_desc.Height)
         )
     );
 #endif
@@ -502,7 +502,8 @@ SK_CEGUI_DrawD3D9 (IDirect3DDevice9* pDev, IDirect3DSwapChain9* pSwapChain)
 
       CEGUI::System::getDllSingleton ().renderAllGUIContexts ();
 
-      if ((int)SK_GetCurrentRenderBackend ().api & (int)SK_RenderAPI::D3D9)
+      if ( static_cast <int> (SK_GetCurrentRenderBackend ().api) &
+           static_cast <int> (SK_RenderAPI::D3D9)                  )
       {
         extern DWORD SK_ImGui_DrawFrame (DWORD dwFlags, void* user);
                      SK_ImGui_DrawFrame (       0x00,     nullptr );
@@ -1003,7 +1004,7 @@ WINAPI D3D9PresentCallback (IDirect3DDevice9 *This,
   if (g_D3D9PresentParams.SwapEffect == D3DSWAPEFFECT_FLIPEX)
   {
     HRESULT hr =
-      D3D9PresentCallbackEx ( (IDirect3DDevice9Ex *)This,
+      D3D9PresentCallbackEx ( static_cast <IDirect3DDevice9Ex *> (This),
                                 pSourceRect,
                                   pDestRect,
                                     hDestWindowOverride,
@@ -1618,8 +1619,6 @@ SK_D3D9_HookPresent (IDirect3DDevice9 *pDev)
   }
 }
 
-static volatile ULONG ImGui_Init = FALSE;
-
 __declspec (noinline)
 void
 STDMETHODCALLTYPE
@@ -2220,7 +2219,7 @@ SK_SetPresentParamsD3D9 (IDirect3DDevice9* pDevice, D3DPRESENT_PARAMETERS* ppara
       //
       // Initialize ImGui for D3D9 games
       //
-      if ( ImGui_ImplDX9_Init ( (void *)pparams->hDeviceWindow,
+      if ( ImGui_ImplDX9_Init ( static_cast <void *> (pparams->hDeviceWindow),
                                   pDevice,
                                     pparams )
          )
@@ -2277,7 +2276,8 @@ SK_SetPresentParamsD3D9 (IDirect3DDevice9* pDevice, D3DPRESENT_PARAMETERS* ppara
           int title = SK_GetSystemMetrics (SM_CYCAPTION);
 
           if ( SK_DiscontEpsilon (pparams->BackBufferWidth,  wnd_rect.right  - wnd_rect.left, 2 * x_dlg + 1) ||
-               SK_DiscontEpsilon (pparams->BackBufferHeight, wnd_rect.bottom - wnd_rect.top,  2 * y_dlg + title + 1) ) {
+               SK_DiscontEpsilon (pparams->BackBufferHeight, wnd_rect.bottom - wnd_rect.top,  2 * y_dlg + title + 1) )
+          {
             pparams->BackBufferWidth  = wnd_rect.right  - wnd_rect.left;
             pparams->BackBufferHeight = wnd_rect.bottom - wnd_rect.top;
 
@@ -2684,11 +2684,11 @@ D3D9CreateDevice_Override (IDirect3D9*            This,
     if (pPresentationParameters != nullptr)
     {
       dll_log.LogEx (true,
-                L"[   D3D9   ]  SwapChain Settings:   Res=(%lux%lu), Format=%04lu, "
+                L"[   D3D9   ]  SwapChain Settings:   Res=(%ux%u), Format=%04i, "
                                         L"Count=%lu - "
                                         L"SwapEffect: 0x%02X, Flags: 0x%04X,"
                                         L"AutoDepthStencil: %s "
-                                        L"PresentationInterval: %lu\n",
+                                        L"PresentationInterval: %u\n",
                    pPresentationParameters->BackBufferWidth,
                    pPresentationParameters->BackBufferHeight,
                    pPresentationParameters->BackBufferFormat,
@@ -2702,10 +2702,10 @@ D3D9CreateDevice_Override (IDirect3D9*            This,
       if (! pPresentationParameters->Windowed)
       {
         dll_log.LogEx (true,
-                L"[   D3D9   ]  Fullscreen Settings:  Refresh Rate: %lu\n",
+                L"[   D3D9   ]  Fullscreen Settings:  Refresh Rate: %u\n",
                    pPresentationParameters->FullScreen_RefreshRateInHz);
         dll_log.LogEx (true,
-                L"[   D3D9   ]  Multisample Settings: Type: %X, Quality: %lu\n",
+                L"[   D3D9   ]  Multisample Settings: Type: %X, Quality: %u\n",
                    pPresentationParameters->MultiSampleType,
                    pPresentationParameters->MultiSampleQuality);
       }
@@ -2935,9 +2935,9 @@ D3D9CreateDevice_Override (IDirect3D9*            This,
     //
     // Initialize ImGui for D3D9 games
     //
-    if ( ImGui_ImplDX9_Init ( (void *)pPresentationParameters->hDeviceWindow,
-                                    *ppReturnedDeviceInterface,
-                                     pPresentationParameters )
+    if ( ImGui_ImplDX9_Init ( reinterpret_cast <void *> (pPresentationParameters->hDeviceWindow),
+                                                        *ppReturnedDeviceInterface,
+                                                         pPresentationParameters )
        )
     {
       InterlockedExchange ( &ImGui_Init, TRUE );
@@ -2971,7 +2971,8 @@ Direct3DCreate9 (UINT SDKVersion)
   {
     if (GetModuleHandle (L"GeDoSaTo.dll"))
     {
-      dll_log.Log (L"[CompatHack] <!> Disabling D3D9Ex optimizations because GeDoSaTo.dll is present!");
+      dll_log.Log ( L"[CompatHack] <!> Disabling D3D9Ex optimizations "
+                                       "because GeDoSaTo.dll is present!" );
       force_d3d9ex = false;
     }
   }
@@ -3010,7 +3011,7 @@ Direct3DCreate9 (UINT SDKVersion)
 HRESULT
 __declspec (noinline)
 STDMETHODCALLTYPE
-Direct3DCreate9Ex (__in UINT SDKVersion, __out IDirect3D9Ex **ppD3D)
+Direct3DCreate9Ex (_In_ UINT SDKVersion, _Out_ IDirect3D9Ex **ppD3D)
 {
   WaitForInit_D3D9 ();
   WaitForInit      ();
@@ -3022,15 +3023,14 @@ Direct3DCreate9Ex (__in UINT SDKVersion, __out IDirect3D9Ex **ppD3D)
                       ppD3D,
                         SK_SummarizeCaller ().c_str () );
 
-  HRESULT hr = E_FAIL;
-
+  HRESULT       hr     = E_FAIL;
   IDirect3D9Ex* d3d9ex = nullptr;
 
   if (Direct3DCreate9Ex_Import)
   {
     D3D9_CALL (hr, Direct3DCreate9Ex_Import (SDKVersion, &d3d9ex));
 
-    if (SUCCEEDED (hr) && d3d9ex!= nullptr)
+    if (SUCCEEDED (hr) && d3d9ex != nullptr)
     {
       *ppD3D = d3d9ex;
     }
@@ -3165,30 +3165,29 @@ HookD3D9 (LPVOID user)
     return 0;
   }
 
-  bool success = SUCCEEDED (
+  const bool success = SUCCEEDED (
     CoInitializeEx (nullptr, COINIT_MULTITHREADED)
   );
   {
     CComPtr <IDirect3D9> pD3D9 = nullptr;
 
-    pD3D9 = Direct3DCreate9_Import (D3D_SDK_VERSION);
+    pD3D9 =
+      Direct3DCreate9_Import (D3D_SDK_VERSION);
 
     HWND hwnd = 0;
 
     if (pD3D9 != nullptr)
-    {
+    {      
       hwnd =
-        CreateWindowW ( L"STATIC", L"Dummy D3D9 Window",
-                          WS_POPUP        | WS_MINIMIZEBOX,
-                            CW_USEDEFAULT, CW_USEDEFAULT,
-                              1, 1, 0,
-                                nullptr, nullptr, 0x00 );
+        SK_Win32_CreateDummyWindow ();
 
       D3DPRESENT_PARAMETERS pparams = { };
 
       pparams.SwapEffect            = D3DSWAPEFFECT_DISCARD;
       pparams.BackBufferFormat      = D3DFMT_UNKNOWN;
       pparams.Windowed              = TRUE;
+      pparams.BackBufferCount       = 1;
+      pparams.hDeviceWindow         = hwnd;
 
       CComPtr <IDirect3DDevice9> pD3D9Dev = nullptr;
 
@@ -3339,7 +3338,8 @@ HookD3D9 (LPVOID user)
                       err.ErrorMessage () );
       }
 
-      DestroyWindow (hwnd);
+      DestroyWindow               (hwnd);
+      SK_Win32_CleanupDummyWindow (    );
 
       CComPtr <IDirect3D9Ex> pD3D9Ex = nullptr;
 
@@ -3353,19 +3353,16 @@ HookD3D9 (LPVOID user)
       if (SUCCEEDED (hr))
       {
         dll_log.Log (L"[   D3D9   ]  Hooking D3D9Ex...");
+        
+        hwnd    =
+          SK_Win32_CreateDummyWindow ();
+        pparams = { };
 
-        hwnd =
-          CreateWindowW ( L"STATIC", L"Dummy D3D9 Window",
-                            WS_POPUP | WS_MINIMIZEBOX,
-                              CW_USEDEFAULT, CW_USEDEFAULT,
-                                64, 64, 0,
-                                  nullptr, nullptr, 0x00 );
-
-        pparams                  = { };
-
-        pparams.SwapEffect       = D3DSWAPEFFECT_FLIPEX;
-        pparams.BackBufferFormat = D3DFMT_UNKNOWN;
-        pparams.Windowed         = TRUE;
+        pparams.SwapEffect            = D3DSWAPEFFECT_FLIPEX;
+        pparams.BackBufferFormat      = D3DFMT_UNKNOWN;
+        pparams.Windowed              = TRUE;
+        pparams.BackBufferCount       = 1;
+        pparams.hDeviceWindow         = hwnd;
 
         CComPtr <IDirect3DDevice9Ex> pD3D9DevEx = nullptr;
 
@@ -3402,7 +3399,8 @@ HookD3D9 (LPVOID user)
           dll_log.Log (L"[   D3D9   ]   * Failure");
         }
 
-        DestroyWindow (hwnd);
+        DestroyWindow               (hwnd);
+        SK_Win32_CleanupDummyWindow (    );
       }
 
       else
@@ -3414,6 +3412,7 @@ HookD3D9 (LPVOID user)
         SK_D3D9RenderBackend::getInstance ();
       }
 
+      SK_ApplyQueuedHooks (                   );
       InterlockedExchange (&__d3d9_ready, TRUE);
 
       if (! (SK_GetDLLRole () & DLL_ROLE::DXGI))
@@ -3438,12 +3437,14 @@ HookD3D9Ex (LPVOID user)
 void
 SK_D3D9_TriggerReset (bool temporary)
 {
-  trigger_reset = reset_stage_e::Initiate;
+  trigger_reset =
+    reset_stage_e::Initiate;
 
   if (temporary)
   {
-    request_mode_change = SK_GetCurrentRenderBackend ().fullscreen_exclusive ?
-                            mode_change_request_e::Windowed :
-                            mode_change_request_e::Fullscreen;
+    request_mode_change =
+      SK_GetCurrentRenderBackend ().fullscreen_exclusive ?
+         mode_change_request_e::Windowed :
+         mode_change_request_e::Fullscreen;
   }
 }

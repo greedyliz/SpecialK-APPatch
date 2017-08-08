@@ -100,6 +100,14 @@ ULONG
 __stdcall
 SK_GetFramesDrawn (void);
 
+
+HWND
+SK_Win32_CreateDummyWindow  (void);
+
+void
+SK_Win32_CleanupDummyWindow (void);
+
+
 enum DLL_ROLE {
   INVALID    = 0x000,
 
@@ -129,18 +137,5 @@ enum DLL_ROLE {
   Wrapper    = 0x40000000,
   ThirdParty = 0x80000000
 };
-
-
-struct SK_ImGui_WidgetRegistry {
-  bool cpumon      = false;
-  bool texcache    = false;
-  bool framepacing = false;
-  bool mediaplayer = false;
-  bool memory      = false;
-  bool disk        = false;
-  bool gpumon      = false;
-  bool steam       = false;
-} extern SK_ImGui_Widgets;
-
 
 #endif /* __SK__CORE_H__ */

@@ -182,8 +182,6 @@ SK_FetchVersionInfo1 (const wchar_t* wszProduct, bool force)
   {
     iSK_INI install_ini (SK_Version_GetInstallIniPath ().c_str ());
 
-    install_ini.parse ();
-
     if (! install_ini.get_sections ().empty ())
     {
       iSK_INISection& user_prefs =
@@ -240,7 +238,7 @@ SK_FetchVersionInfo1 (const wchar_t* wszProduct, bool force)
 
         remind_time->load ();
 
-        if (uliNow.QuadPart >= (uint64_t)remind_time->get_value ())
+        if (uliNow.QuadPart >= static_cast <uint64_t> (remind_time->get_value ()))
         {
           need_remind = true;
 
@@ -473,9 +471,6 @@ SK_Version_GetLatestInfo_V1 (const wchar_t* wszProduct)
   {
     iSK_INI install_ini (SK_Version_GetInstallIniPath ().c_str ());
     iSK_INI repo_ini    (SK_Version_GetRepoIniPath    ().c_str ());
-
-    repo_ini.parse    ();  
-    install_ini.parse ();
   
     ver_info.branch   = install_ini.get_section (L"Version.Local").get_value (L"Branch");
 
@@ -515,8 +510,6 @@ SK_Version_GetLocalInfo_V1 (const wchar_t* wszProduct)
   if (GetFileAttributes (SK_Version_GetInstallIniPath ().c_str ()) != INVALID_FILE_ATTRIBUTES)
   {
     iSK_INI install_ini (SK_Version_GetInstallIniPath ().c_str ());
-  
-    install_ini.parse ();
 
     ver_info.branch   = install_ini.get_section (L"Version.Local").get_value (L"Branch");
     ver_info.package  = install_ini.get_section (L"Version.Local").get_value (L"InstallPackage");
@@ -576,7 +569,6 @@ SK_Version_GetAvailableBranches (const wchar_t* wszProduct)
   if (GetFileAttributes (SK_Version_GetRepoIniPath ().c_str ()) != INVALID_FILE_ATTRIBUTES)
   {
     iSK_INI repo_ini (SK_Version_GetRepoIniPath ().c_str ());
-    repo_ini.parse    ();
 
     iSK_INI::_TSectionMap& sections =
       repo_ini.get_sections ();
@@ -602,14 +594,13 @@ SK_Version_GetUpdateFrequency (const wchar_t* wszProduct)
 {
   uint64_t update_freq = MAXULONGLONG;
 
-  if (wszProduct == nullptr)
-    wszProduct = __SK_LastProductTested.c_str ();
+  UNREFERENCED_PARAMETER (wszProduct);
+  //if (wszProduct == nullptr)
+  //  wszProduct = __SK_LastProductTested.c_str ();
 
   if (GetFileAttributes (SK_Version_GetInstallIniPath ().c_str ()) != INVALID_FILE_ATTRIBUTES)
   {
     iSK_INI install_ini (SK_Version_GetInstallIniPath ().c_str ());
-    install_ini.parse   ();
-
 
     iSK_INISection& user_prefs =
       install_ini.get_section (L"Update.User");
@@ -655,13 +646,13 @@ SK_Version_GetUpdateFrequency (const wchar_t* wszProduct)
 void
 SK_Version_SetUpdateFrequency (const wchar_t* wszProduct, uint64_t freq)
 {
-  if (wszProduct == nullptr)
-    wszProduct = __SK_LastProductTested.c_str ();
+  UNREFERENCED_PARAMETER (wszProduct);
+  //if (wszProduct == nullptr)
+    //wszProduct = __SK_LastProductTested.c_str ();
 
   if (GetFileAttributes (SK_Version_GetInstallIniPath ().c_str ()) != INVALID_FILE_ATTRIBUTES)
   {
     iSK_INI install_ini (SK_Version_GetInstallIniPath ().c_str ());
-    install_ini.parse ();
 
     iSK_INISection& user_prefs =
       install_ini.get_section (L"Update.User");
@@ -686,18 +677,18 @@ SK_Version_SetUpdateFrequency (const wchar_t* wszProduct, uint64_t freq)
 void
 SK_Version_ForceUpdateNextLaunch (const wchar_t* wszProduct)
 {
-  if (wszProduct == nullptr)
-    wszProduct = __SK_LastProductTested.c_str ();
+  UNREFERENCED_PARAMETER (wszProduct);
+  //if (wszProduct == nullptr)
+  //  wszProduct = __SK_LastProductTested.c_str ();
 
   if (GetFileAttributes (SK_Version_GetInstallIniPath ().c_str ()) != INVALID_FILE_ATTRIBUTES)
   {
     iSK_INI install_ini (SK_Version_GetInstallIniPath ().c_str ());
-            install_ini.parse ();
 
     if (install_ini.contains_section (L"Update.User"))
     {
       if (install_ini.get_section (L"Update.User").contains_key (L"Reminder"))
-        install_ini.get_section (L"Update.User").remove_key (L"Reminder");
+          install_ini.get_section (L"Update.User").remove_key   (L"Reminder");
     }
 
     iSK_INISection& user_prefs =
@@ -713,14 +704,13 @@ SK_Version_ForceUpdateNextLaunch (const wchar_t* wszProduct)
 bool
 SK_Version_SwitchBranches (const wchar_t* wszProduct, const char* szBranch)
 {
-  if (wszProduct == nullptr)
-    wszProduct = __SK_LastProductTested.c_str ();
+  UNREFERENCED_PARAMETER (wszProduct);
+  //if (wszProduct == nullptr)
+  //  wszProduct = __SK_LastProductTested.c_str ();
 
   if (GetFileAttributes (SK_Version_GetInstallIniPath ().c_str ()) != INVALID_FILE_ATTRIBUTES)
   {
     iSK_INI install_ini (SK_Version_GetInstallIniPath ().c_str ());
-
-    install_ini.parse ();
 
     // TODO: Validate selected branch against those in the repository
 
@@ -758,7 +748,6 @@ SK_Version_GetLatestBranchInfo_V1 (const wchar_t* wszProduct, const char* szBran
   if (GetFileAttributes (SK_Version_GetRepoIniPath ().c_str ()) != INVALID_FILE_ATTRIBUTES)
   {
     iSK_INI repo_ini (SK_Version_GetRepoIniPath ().c_str ());
-      repo_ini.parse    ();
 
     wchar_t wszFormatted [256] = { };
     _swprintf (wszFormatted, L"Version.%hs", szBranch);
@@ -768,7 +757,7 @@ SK_Version_GetLatestBranchInfo_V1 (const wchar_t* wszProduct, const char* szBran
       iSK_INISection& branch_sec =
         repo_ini.get_section (wszFormatted);
 
-      auto ParseInstallPackage = [](const char* szBranch, const wchar_t* wszPackage) ->
+      auto ParseInstallPackage = [](const char* szBranch, const wchar_t*) ->
         SK_VersionInfo_V1
           {
             SK_VersionInfo_V1 vinfo1;

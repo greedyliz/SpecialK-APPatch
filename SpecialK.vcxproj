@@ -225,7 +225,6 @@
     <LibraryPath>$(LibraryPath);$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(NETFXKitsDir)Lib\um\x64;$(SolutionDir)\depends\lib\CEGUI\x64;$(SolutionDir)\depends\lib;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Lib\x64</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <LinkIncremental>false</LinkIncremental>
     <OutDir>$(SolutionDir)build\$(Configuration)\Win32\</OutDir>
     <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
     <RunCodeAnalysis>false</RunCodeAnalysis>
@@ -235,6 +234,7 @@
     <IntDir>$(SolutionDir)build\$(Configuration)\Win32\</IntDir>
     <EnableCppCoreCheck>true</EnableCppCoreCheck>
     <EnableExperimentalCppCoreCheck>true</EnableExperimentalCppCoreCheck>
+    <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Installer|Win32'">
     <LinkIncremental>false</LinkIncremental>
@@ -288,7 +288,6 @@
     <IntDir>$(SolutionDir)build\$(Configuration)\Win32\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <LinkIncremental>false</LinkIncremental>
     <TargetName>SpecialK64</TargetName>
     <OutDir>$(SolutionDir)build\$(Configuration)\x64\</OutDir>
     <IntDir>$(SolutionDir)build\$(Configuration)\x64\</IntDir>
@@ -297,6 +296,7 @@
     <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
     <EnableCppCoreCheck>true</EnableCppCoreCheck>
     <EnableExperimentalCppCoreCheck>true</EnableExperimentalCppCoreCheck>
+    <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Installer|x64'">
     <LinkIncremental>false</LinkIncremental>
@@ -348,33 +348,27 @@
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
-      <OmitFramePointers>false</OmitFramePointers>
-      <WholeProgramOptimization>false</WholeProgramOptimization>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
-      <StringPooling>false</StringPooling>
-      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExceptionHandling>SyncCThrow</ExceptionHandling>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
       <ControlFlowGuard>false</ControlFlowGuard>
       <FunctionLevelLinking>false</FunctionLevelLinking>
-      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
       <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
       <CreateHotpatchableImage>true</CreateHotpatchableImage>
       <RemoveUnreferencedCodeData>false</RemoveUnreferencedCodeData>
       <EnforceTypeConversionRules>true</EnforceTypeConversionRules>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
-      <LanguageStandard>stdcpp14</LanguageStandard>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
       <FloatingPointModel>Fast</FloatingPointModel>
       <FloatingPointExceptions>false</FloatingPointExceptions>
-      <MinimalRebuild>false</MinimalRebuild>
       <DisableSpecificWarnings>4201;4702;4061</DisableSpecificWarnings>
-      <SDLCheck>false</SDLCheck>
       <BufferSecurityCheck>false</BufferSecurityCheck>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ModuleDefinitionFile>SpecialK.def</ModuleDefinitionFile>
-      <OutputFile>\\zilcho\Tales of Symphonia\d3d9.dll</OutputFile>
+      <OutputFile>$(OutDir)$(TargetName).dll</OutputFile>
       <CreateHotPatchableImage>ItaniumImage</CreateHotPatchableImage>
       <OptimizeReferences>false</OptimizeReferences>
       <EnableCOMDATFolding>false</EnableCOMDATFolding>
@@ -387,7 +381,7 @@
       <FixedBaseAddress>false</FixedBaseAddress>
       <FullProgramDatabaseFile>true</FullProgramDatabaseFile>
       <AssemblyDebug>false</AssemblyDebug>
-	  <ImageHasSafeExceptionHandlers>true</ImageHasSafeExceptionHandlers>
+      <ImageHasSafeExceptionHandlers>true</ImageHasSafeExceptionHandlers>
     </Link>
     <ProjectReference />
   </ItemDefinitionGroup>
@@ -403,28 +397,23 @@
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
-      <OmitFramePointers>false</OmitFramePointers>
-      <WholeProgramOptimization>false</WholeProgramOptimization>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
-      <StringPooling>false</StringPooling>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
       <ControlFlowGuard>false</ControlFlowGuard>
       <FunctionLevelLinking>false</FunctionLevelLinking>
-      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
       <AdditionalIncludeDirectories>
       </AdditionalIncludeDirectories>
       <EnforceTypeConversionRules>true</EnforceTypeConversionRules>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
-      <SDLCheck>false</SDLCheck>
       <SmallerTypeCheck>false</SmallerTypeCheck>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <FloatingPointModel>Fast</FloatingPointModel>
       <FloatingPointExceptions>false</FloatingPointExceptions>
       <RemoveUnreferencedCodeData>false</RemoveUnreferencedCodeData>
-      <LanguageStandard>stdcpp14</LanguageStandard>
-      <MinimalRebuild>false</MinimalRebuild>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
       <DisableSpecificWarnings>4201;4702;4061</DisableSpecificWarnings>
-	  <BufferSecurityCheck>false</BufferSecurityCheck>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <ExceptionHandling>SyncCThrow</ExceptionHandling>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -454,27 +443,20 @@
       <PrecompiledHeader>
       </PrecompiledHeader>
       <Optimization>Full</Optimization>
-      <FunctionLevelLinking>false</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;SK_EXPORTS;GLEW_STATIC;%(PreprocessorDefinitions);/D_WIN32_WINNT _WIN32_WINNT_WIN7;/DWINVER _WIN32_WINNT_WIN7</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;SK_EXPORTS;GLEW_STATIC;%(PreprocessorDefinitions);WINVER=_WIN32_WINNT_WIN7;_WIN32_WINNT=_WIN32_WINNT_WIN7</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
-      <OmitFramePointers>false</OmitFramePointers>
       <CallingConvention>Cdecl</CallingConvention>
       <EnablePREfast>false</EnablePREfast>
-      <WholeProgramOptimization>false</WholeProgramOptimization>
-      <ExceptionHandling>Sync</ExceptionHandling>
       <UseFullPaths>false</UseFullPaths>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
-      <StringPooling>false</StringPooling>
       <ControlFlowGuard>false</ControlFlowGuard>
       <ExpandAttributedSource>false</ExpandAttributedSource>
       <BrowseInformation>false</BrowseInformation>
       <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
-      <EnableFiberSafeOptimizations>false</EnableFiberSafeOptimizations>
       <AssemblerOutput>All</AssemblerOutput>
-      <MinimalRebuild>false</MinimalRebuild>
       <CreateHotpatchableImage>true</CreateHotpatchableImage>
       <AdditionalIncludeDirectories>$(SolutionDir)include</AdditionalIncludeDirectories>
       <FloatingPointExceptions>false</FloatingPointExceptions>
@@ -482,18 +464,17 @@
       <RemoveUnreferencedCodeData>false</RemoveUnreferencedCodeData>
       <EnforceTypeConversionRules>true</EnforceTypeConversionRules>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
-      <LanguageStandard>stdcpp14</LanguageStandard>
-      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
       <DisableSpecificWarnings>4201;4702;4061</DisableSpecificWarnings>
-      <SDLCheck>false</SDLCheck>
       <BufferSecurityCheck>false</BufferSecurityCheck>
+      <ExceptionHandling>SyncCThrow</ExceptionHandling>
+      <FunctionLevelLinking>false</FunctionLevelLinking>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <OutputFile>$(OutDir)$(TargetName).dll</OutputFile>
       <ModuleDefinitionFile>SpecialK.def</ModuleDefinitionFile>
-      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
       <DataExecutionPrevention>false</DataExecutionPrevention>
       <DelayLoadDLLs>CEGUIBase-0.dll;CEGUIDirect3D9Renderer-0.dll;CEGUIDirect3D11Renderer-0.dll;;CEGUIOpenGLRenderer-0.dll</DelayLoadDLLs>
@@ -507,12 +488,13 @@
       </EntryPointSymbol>
       <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;lzma\Win32\libzma.lib;DirectXTex\Win32\DirectXTex.lib;MinHook\Win32\libMinHook.lib;nvapi\Win32\nvapi.lib;glew\Win32\glew.lib;%(AdditionalDependencies);C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Lib\x86\d3dcompiler.lib</AdditionalDependencies>
       <ImportLibrary />
-      <AssemblyDebug>false</AssemblyDebug>
+      <AssemblyDebug>true</AssemblyDebug>
       <CreateHotPatchableImage>ItaniumImage</CreateHotPatchableImage>
       <SectionAlignment>
       </SectionAlignment>
       <FixedBaseAddress>false</FixedBaseAddress>
       <OptimizeReferences>false</OptimizeReferences>
+      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
       <EnableCOMDATFolding>false</EnableCOMDATFolding>
     </Link>
     <ProjectReference />
@@ -539,32 +521,25 @@ start /D "$(OutDir)" "SK.Inject" SKIM64.exe +Inject 2&gt;nul 1&gt;nul Exit 0</Co
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
-      <OmitFramePointers>false</OmitFramePointers>
       <RemoveUnreferencedCodeData>false</RemoveUnreferencedCodeData>
       <CallingConvention>Cdecl</CallingConvention>
       <EnablePREfast>false</EnablePREfast>
-      <WholeProgramOptimization>false</WholeProgramOptimization>
-      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExceptionHandling>SyncCThrow</ExceptionHandling>
       <UseFullPaths>false</UseFullPaths>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
-      <StringPooling>false</StringPooling>
       <ControlFlowGuard>false</ControlFlowGuard>
       <ExpandAttributedSource>false</ExpandAttributedSource>
       <BrowseInformation>true</BrowseInformation>
       <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
-      <EnableFiberSafeOptimizations>false</EnableFiberSafeOptimizations>
       <AssemblerOutput>All</AssemblerOutput>
-      <MinimalRebuild>false</MinimalRebuild>
-      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
       <CreateHotpatchableImage>true</CreateHotpatchableImage>
       <AdditionalIncludeDirectories>$(SolutionDir)include</AdditionalIncludeDirectories>
       <EnforceTypeConversionRules>true</EnforceTypeConversionRules>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
-      <LanguageStandard>stdcpp14</LanguageStandard>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
       <FloatingPointModel>Fast</FloatingPointModel>
       <FloatingPointExceptions>false</FloatingPointExceptions>
       <DisableSpecificWarnings>4201;4702;4061</DisableSpecificWarnings>
-      <SDLCheck>false</SDLCheck>
       <BufferSecurityCheck>false</BufferSecurityCheck>
     </ClCompile>
     <Link>
@@ -612,35 +587,29 @@ Exit 0</Command>
       <Optimization>Full</Optimization>
       <FunctionLevelLinking>false</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;SK_EXPORTS;ISOLATION_AWARE_ENABLED;GLEW_STATIC;%(PreprocessorDefinitions);TBFIX;/D_WIN32_WINNT _WIN32_WINNT_WIN7;/DWINVER _WIN32_WINNT_WIN7</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;SK_EXPORTS;GLEW_STATIC;%(PreprocessorDefinitions);TBFIX;WINVER=_WIN32_WINNT_WIN7;_WIN32_WINNT=_WIN32_WINNT_WIN7</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
-      <OmitFramePointers>false</OmitFramePointers>
       <RemoveUnreferencedCodeData>false</RemoveUnreferencedCodeData>
       <CallingConvention>Cdecl</CallingConvention>
       <EnablePREfast>false</EnablePREfast>
-      <WholeProgramOptimization>false</WholeProgramOptimization>
-      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExceptionHandling>SyncCThrow</ExceptionHandling>
       <UseFullPaths>false</UseFullPaths>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <ControlFlowGuard>false</ControlFlowGuard>
       <ExpandAttributedSource>false</ExpandAttributedSource>
       <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
-      <EnableFiberSafeOptimizations>false</EnableFiberSafeOptimizations>
       <AssemblerOutput>NoListing</AssemblerOutput>
-      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
       <CreateHotpatchableImage>true</CreateHotpatchableImage>
       <AdditionalIncludeDirectories>$(SolutionDir)include</AdditionalIncludeDirectories>
-      <StringPooling>false</StringPooling>
       <EnforceTypeConversionRules>true</EnforceTypeConversionRules>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
-      <LanguageStandard>stdcpp14</LanguageStandard>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
       <FloatingPointModel>Fast</FloatingPointModel>
       <FloatingPointExceptions>false</FloatingPointExceptions>
-      <SDLCheck>false</SDLCheck>
       <DisableSpecificWarnings>4201;4702;4061</DisableSpecificWarnings>
-	  <BufferSecurityCheck>false</BufferSecurityCheck>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -688,37 +657,31 @@ Exit 0</Command>
       <Optimization>Full</Optimization>
       <FunctionLevelLinking>false</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;SK_EXPORTS;ISOLATION_AWARE_ENABLED;GLEW_STATIC;%(PreprocessorDefinitions);/D_WIN32_WINNT _WIN32_WINNT_WIN7;/DWINVER _WIN32_WINNT_WIN7</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;SK_EXPORTS;GLEW_STATIC;%(PreprocessorDefinitions);/D_WIN32_WINNT _WIN32_WINNT_WIN7;/DWINVER _WIN32_WINNT_WIN7</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
-      <OmitFramePointers>false</OmitFramePointers>
       <RemoveUnreferencedCodeData>false</RemoveUnreferencedCodeData>
       <CallingConvention>Cdecl</CallingConvention>
       <EnablePREfast>false</EnablePREfast>
-      <WholeProgramOptimization>false</WholeProgramOptimization>
-      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExceptionHandling>SyncCThrow</ExceptionHandling>
       <UseFullPaths>false</UseFullPaths>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
-      <StringPooling>false</StringPooling>
       <ControlFlowGuard>false</ControlFlowGuard>
       <ExpandAttributedSource>false</ExpandAttributedSource>
       <BrowseInformation>true</BrowseInformation>
       <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
-      <EnableFiberSafeOptimizations>false</EnableFiberSafeOptimizations>
       <AssemblerOutput>All</AssemblerOutput>
       <PreprocessKeepComments>true</PreprocessKeepComments>
-      <MinimalRebuild>false</MinimalRebuild>
-      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
       <CreateHotpatchableImage>true</CreateHotpatchableImage>
       <AdditionalIncludeDirectories>$(SolutionDir)include</AdditionalIncludeDirectories>
       <EnforceTypeConversionRules>true</EnforceTypeConversionRules>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
-      <LanguageStandard>stdcpp14</LanguageStandard>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
       <FloatingPointModel>Fast</FloatingPointModel>
       <FloatingPointExceptions>false</FloatingPointExceptions>
       <DisableSpecificWarnings>4201;4702;4061</DisableSpecificWarnings>
-	  <BufferSecurityCheck>false</BufferSecurityCheck>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -764,37 +727,30 @@ Exit 0</Command>
       <Optimization>Full</Optimization>
       <FunctionLevelLinking>false</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;SK_EXPORTS;ISOLATION_AWARE_ENABLED;GLEW_STATIC;%(PreprocessorDefinitions);/D_WIN32_WINNT _WIN32_WINNT_WIN7;/DWINVER _WIN32_WINNT_WIN7</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;SK_EXPORTS;GLEW_STATIC;%(PreprocessorDefinitions);/D_WIN32_WINNT _WIN32_WINNT_WIN7;/DWINVER _WIN32_WINNT_WIN7</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
-      <OmitFramePointers>false</OmitFramePointers>
       <RemoveUnreferencedCodeData>false</RemoveUnreferencedCodeData>
       <CallingConvention>Cdecl</CallingConvention>
       <EnablePREfast>false</EnablePREfast>
-      <WholeProgramOptimization>false</WholeProgramOptimization>
-      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExceptionHandling>SyncCThrow</ExceptionHandling>
       <UseFullPaths>false</UseFullPaths>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
-      <StringPooling>false</StringPooling>
       <ControlFlowGuard>false</ControlFlowGuard>
       <ExpandAttributedSource>false</ExpandAttributedSource>
       <BrowseInformation>true</BrowseInformation>
       <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
-      <EnableFiberSafeOptimizations>false</EnableFiberSafeOptimizations>
       <AssemblerOutput>All</AssemblerOutput>
       <PreprocessKeepComments>true</PreprocessKeepComments>
-      <MinimalRebuild>false</MinimalRebuild>
-      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
       <CreateHotpatchableImage>true</CreateHotpatchableImage>
       <AdditionalIncludeDirectories>$(SolutionDir)include</AdditionalIncludeDirectories>
       <EnforceTypeConversionRules>true</EnforceTypeConversionRules>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
-      <LanguageStandard>stdcpp14</LanguageStandard>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
       <FloatingPointModel>Fast</FloatingPointModel>
       <FloatingPointExceptions>false</FloatingPointExceptions>
       <DisableSpecificWarnings>4201;4702;4061</DisableSpecificWarnings>
-      <SDLCheck>false</SDLCheck>
       <BufferSecurityCheck>false</BufferSecurityCheck>
     </ClCompile>
     <Link>
@@ -840,27 +796,22 @@ Exit 0</Command>
       </PrecompiledHeader>
       <Optimization>Full</Optimization>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;SK_EXPORTS;GLEW_STATIC;%(PreprocessorDefinitions);/D_WIN32_WINNT _WIN32_WINNT_WIN7;/DWINVER _WIN32_WINNT_WIN7</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;SK_EXPORTS;GLEW_STATIC;%(PreprocessorDefinitions);WINVER=_WIN32_WINNT_WIN7;_WIN32_WINNT=_WIN32_WINNT_WIN7</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
-      <OmitFramePointers>false</OmitFramePointers>
       <RemoveUnreferencedCodeData>false</RemoveUnreferencedCodeData>
       <CallingConvention>Cdecl</CallingConvention>
       <EnablePREfast>false</EnablePREfast>
-      <WholeProgramOptimization>false</WholeProgramOptimization>
-      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExceptionHandling>SyncCThrow</ExceptionHandling>
       <UseFullPaths>false</UseFullPaths>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
-      <StringPooling>false</StringPooling>
       <ControlFlowGuard>false</ControlFlowGuard>
       <ExpandAttributedSource>false</ExpandAttributedSource>
       <BrowseInformation>false</BrowseInformation>
       <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
-      <EnableFiberSafeOptimizations>false</EnableFiberSafeOptimizations>
       <AssemblerOutput>All</AssemblerOutput>
       <PreprocessKeepComments>false</PreprocessKeepComments>
-      <MinimalRebuild>false</MinimalRebuild>
       <CreateHotpatchableImage>true</CreateHotpatchableImage>
       <AdditionalIncludeDirectories>$(SolutionDir)include</AdditionalIncludeDirectories>
       <FloatingPointModel>Fast</FloatingPointModel>
@@ -868,11 +819,9 @@ Exit 0</Command>
       <FunctionLevelLinking>false</FunctionLevelLinking>
       <EnforceTypeConversionRules>true</EnforceTypeConversionRules>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
-      <LanguageStandard>stdcpp14</LanguageStandard>
-      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
-      <SDLCheck>false</SDLCheck>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
       <DisableSpecificWarnings>4201;4702;4061</DisableSpecificWarnings>
-	  <BufferSecurityCheck>false</BufferSecurityCheck>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -902,11 +851,12 @@ Exit 0</Command>
     </Link>
     <ProjectReference />
     <PostBuildEvent>
-      <Command>del "$(OutDir)$(TargetName).lib" 2&gt;nul 1&gt;nul del "$(OutDir)$(TargetName).exp" 2&gt;nul 1&gt;nul 
-Exit 0</Command>
+      <Command>
+      </Command>
     </PostBuildEvent>
     <PostBuildEvent>
-      <Message>Deleting useless import library...</Message>
+      <Message>
+      </Message>
     </PostBuildEvent>
     <ProjectReference />
   </ItemDefinitionGroup>
@@ -914,7 +864,7 @@ Exit 0</Command>
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
-      <PreprocessorDefinitions>_WIN64;WIN32;NDEBUG;_WINDOWS;_USRDLL;SK_EXPORTS;GLEW_STATIC;%(PreprocessorDefinitions);PSAPI_VERSION=1;_WIN32_WINNT _WIN32_WINNT_WIN7;WINVER _WIN32_WINNT_WIN7</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_WIN64;WIN32;NDEBUG;_WINDOWS;_USRDLL;SK_EXPORTS;GLEW_STATIC;%(PreprocessorDefinitions);PSAPI_VERSION=1;WINVER=_WIN32_WINNT_WIN7;_WIN32_WINNT=_WIN32_WINNT_WIN7</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
@@ -922,36 +872,29 @@ Exit 0</Command>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <AdditionalOptions>/EHsc %(AdditionalOptions)</AdditionalOptions>
       <Optimization>Full</Optimization>
-      <OmitFramePointers>false</OmitFramePointers>
-      <WholeProgramOptimization>false</WholeProgramOptimization>
-      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
-      <StringPooling>false</StringPooling>
-      <MinimalRebuild>false</MinimalRebuild>
       <ControlFlowGuard>false</ControlFlowGuard>
-      <CreateHotpatchableImage>false</CreateHotpatchableImage>
       <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
       <FloatingPointModel>Fast</FloatingPointModel>
       <FloatingPointExceptions>false</FloatingPointExceptions>
       <RemoveUnreferencedCodeData>false</RemoveUnreferencedCodeData>
-      <FunctionLevelLinking>false</FunctionLevelLinking>
       <EnforceTypeConversionRules>true</EnforceTypeConversionRules>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
-      <LanguageStandard>stdcpp14</LanguageStandard>
-      <SDLCheck>false</SDLCheck>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
       <DisableSpecificWarnings>4201;4702;4061</DisableSpecificWarnings>
-	  <BufferSecurityCheck>false</BufferSecurityCheck>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <ExceptionHandling>SyncCThrow</ExceptionHandling>
+      <FunctionLevelLinking>false</FunctionLevelLinking>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <OutputFile>$(OutDir)$(TargetName).dll</OutputFile>
-      <AssemblyDebug>false</AssemblyDebug>
+      <AssemblyDebug>true</AssemblyDebug>
       <GenerateMapFile>false</GenerateMapFile>
       <MapExports>false</MapExports>
       <DataExecutionPrevention>false</DataExecutionPrevention>
       <ModuleDefinitionFile>SpecialK.def</ModuleDefinitionFile>
       <DelayLoadDLLs>CEGUIBase-0.dll;CEGUIDirect3D9Renderer-0.dll;CEGUIDirect3D11Renderer-0.dll;;CEGUIOpenGLRenderer-0.dll</DelayLoadDLLs>
-      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
       <LargeAddressAware>true</LargeAddressAware>
       <AdditionalOptions>/NODEFAULTLIB:libc.lib /NODEFAULTLIB:libcmt.lib /NODEFAULTLIB:libcd.lib /NODEFAULTLIB:libcmtd.lib /NODEFAULTLIB:msvcrtd.lib %(AdditionalOptions)</AdditionalOptions>
       <CreateHotPatchableImage>ItaniumImage</CreateHotPatchableImage>
@@ -969,6 +912,7 @@ Exit 0</Command>
       <SetChecksum>false</SetChecksum>
       <FixedBaseAddress>false</FixedBaseAddress>
       <OptimizeReferences>false</OptimizeReferences>
+      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
       <EnableCOMDATFolding>false</EnableCOMDATFolding>
     </Link>
     <ProjectReference />
@@ -1000,29 +944,23 @@ start /D "$(OutDir)" "SK.Inject" SKIM64.exe +Inject 2&gt;nul 1&gt;nul Exit 0</Co
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <AdditionalOptions>/EHsc %(AdditionalOptions)</AdditionalOptions>
       <Optimization>Full</Optimization>
-      <OmitFramePointers>false</OmitFramePointers>
-      <WholeProgramOptimization>false</WholeProgramOptimization>
-      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
-      <StringPooling>false</StringPooling>
-      <MinimalRebuild>false</MinimalRebuild>
       <ControlFlowGuard>false</ControlFlowGuard>
-      <CreateHotpatchableImage>false</CreateHotpatchableImage>
       <FloatingPointModel>Fast</FloatingPointModel>
       <FloatingPointExceptions>false</FloatingPointExceptions>
       <RemoveUnreferencedCodeData>false</RemoveUnreferencedCodeData>
       <EnforceTypeConversionRules>true</EnforceTypeConversionRules>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
-      <LanguageStandard>stdcpp14</LanguageStandard>
-      <SDLCheck>false</SDLCheck>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
       <DisableSpecificWarnings>4201;4702;4061</DisableSpecificWarnings>
-	  <BufferSecurityCheck>false</BufferSecurityCheck>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <ExceptionHandling>SyncCThrow</ExceptionHandling>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>false</EnableCOMDATFolding>
       <OptimizeReferences>false</OptimizeReferences>
-      <OutputFile>Installer64.dll</OutputFile>
+      <OutputFile>$(OutDir)$(TargetName).dll</OutputFile>
       <AssemblyDebug>false</AssemblyDebug>
       <GenerateMapFile>false</GenerateMapFile>
       <MapExports>false</MapExports>
@@ -1068,22 +1006,16 @@ start /D "$(OutDir)" "SK.Inject" SKIM64.exe +Inject 2&gt;nul 1&gt;nul Exit 0</Co
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <AdditionalOptions>/EHsc %(AdditionalOptions)</AdditionalOptions>
       <Optimization>Full</Optimization>
-      <OmitFramePointers>false</OmitFramePointers>
-      <WholeProgramOptimization>false</WholeProgramOptimization>
-      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
-      <StringPooling>false</StringPooling>
-      <MinimalRebuild>false</MinimalRebuild>
       <ControlFlowGuard>false</ControlFlowGuard>
-      <CreateHotpatchableImage>false</CreateHotpatchableImage>
       <FloatingPointModel>Fast</FloatingPointModel>
       <FloatingPointExceptions>false</FloatingPointExceptions>
       <RemoveUnreferencedCodeData>false</RemoveUnreferencedCodeData>
       <EnforceTypeConversionRules>true</EnforceTypeConversionRules>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
-      <LanguageStandard>stdcpp14</LanguageStandard>
-      <SDLCheck>false</SDLCheck>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
       <DisableSpecificWarnings>4201;4702;4061</DisableSpecificWarnings>
-	  <BufferSecurityCheck>false</BufferSecurityCheck>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <ExceptionHandling>SyncCThrow</ExceptionHandling>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -1127,7 +1059,7 @@ start /D "$(OutDir)" "SK.Inject" SKIM64.exe +Inject 2&gt;nul 1&gt;nul Exit 0</Co
       <WarningLevel>Level4</WarningLevel>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <FunctionLevelLinking>false</FunctionLevelLinking>
-      <PreprocessorDefinitions>_WIN64;WIN32;NDEBUG;_WINDOWS;_USRDLL;SK_EXPORTS;GLEW_STATIC;%(PreprocessorDefinitions);TBFIX;/D_WIN32_WINNT _WIN32_WINNT_WIN7;/DWINVER _WIN32_WINNT_WIN7</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_WIN64;WIN32;NDEBUG;_WINDOWS;_USRDLL;SK_EXPORTS;GLEW_STATIC;%(PreprocessorDefinitions);TBFIX;WINVER=_WIN32_WINNT_WIN7;_WIN32_WINNT=_WIN32_WINNT_WIN7</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
@@ -1135,22 +1067,16 @@ start /D "$(OutDir)" "SK.Inject" SKIM64.exe +Inject 2&gt;nul 1&gt;nul Exit 0</Co
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <AdditionalOptions>/EHsc %(AdditionalOptions)</AdditionalOptions>
       <Optimization>Full</Optimization>
-      <OmitFramePointers>false</OmitFramePointers>
-      <WholeProgramOptimization>false</WholeProgramOptimization>
-      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
-      <StringPooling>false</StringPooling>
-      <MinimalRebuild>false</MinimalRebuild>
       <ControlFlowGuard>false</ControlFlowGuard>
-      <CreateHotpatchableImage>false</CreateHotpatchableImage>
       <FloatingPointModel>Fast</FloatingPointModel>
       <FloatingPointExceptions>false</FloatingPointExceptions>
       <RemoveUnreferencedCodeData>false</RemoveUnreferencedCodeData>
       <EnforceTypeConversionRules>true</EnforceTypeConversionRules>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
-      <LanguageStandard>stdcpp14</LanguageStandard>
-      <SDLCheck>false</SDLCheck>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
       <DisableSpecificWarnings>4201;4702;4061</DisableSpecificWarnings>
-	  <BufferSecurityCheck>false</BufferSecurityCheck>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <ExceptionHandling>SyncCThrow</ExceptionHandling>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -1197,7 +1123,7 @@ start /D "$(OutDir)" "SK.Inject" SKIM64.exe +Inject 2&gt;nul 1&gt;nul Exit 0</Co
       <WarningLevel>Level4</WarningLevel>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <FunctionLevelLinking>false</FunctionLevelLinking>
-      <PreprocessorDefinitions>_WIN64;WIN32;NDEBUG;_WINDOWS;_USRDLL;SK_EXPORTS;GLEW_STATIC;%(PreprocessorDefinitions);PSAPI_VERSION=1;_WIN32_WINNT _WIN32_WINNT_WIN7;WINVER _WIN32_WINNT_WIN7</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_WIN64;WIN32;NDEBUG;_WINDOWS;_USRDLL;SK_EXPORTS;GLEW_STATIC;%(PreprocessorDefinitions);PSAPI_VERSION=1;WINVER=_WIN32_WINNT_WIN7;_WIN32_WINNT=_WIN32_WINNT_WIN7</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
@@ -1205,22 +1131,16 @@ start /D "$(OutDir)" "SK.Inject" SKIM64.exe +Inject 2&gt;nul 1&gt;nul Exit 0</Co
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <AdditionalOptions>/EHsc %(AdditionalOptions)</AdditionalOptions>
       <Optimization>Full</Optimization>
-      <OmitFramePointers>false</OmitFramePointers>
-      <WholeProgramOptimization>false</WholeProgramOptimization>
-      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
-      <StringPooling>false</StringPooling>
-      <MinimalRebuild>false</MinimalRebuild>
       <ControlFlowGuard>false</ControlFlowGuard>
-      <CreateHotpatchableImage>false</CreateHotpatchableImage>
       <FloatingPointModel>Fast</FloatingPointModel>
       <FloatingPointExceptions>false</FloatingPointExceptions>
       <RemoveUnreferencedCodeData>false</RemoveUnreferencedCodeData>
       <EnforceTypeConversionRules>true</EnforceTypeConversionRules>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
-      <LanguageStandard>stdcpp14</LanguageStandard>
-      <SDLCheck>false</SDLCheck>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
       <DisableSpecificWarnings>4201;4702;4061</DisableSpecificWarnings>
-	  <BufferSecurityCheck>false</BufferSecurityCheck>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <ExceptionHandling>SyncCThrow</ExceptionHandling>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -1275,22 +1195,16 @@ start /D "$(OutDir)" "SK.Inject" SKIM64.exe +Inject 2&gt;nul 1&gt;nul Exit 0</Co
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <AdditionalOptions>/EHsc %(AdditionalOptions)</AdditionalOptions>
       <Optimization>Full</Optimization>
-      <OmitFramePointers>false</OmitFramePointers>
-      <WholeProgramOptimization>false</WholeProgramOptimization>
-      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
-      <StringPooling>false</StringPooling>
-      <MinimalRebuild>false</MinimalRebuild>
       <ControlFlowGuard>false</ControlFlowGuard>
-      <CreateHotpatchableImage>false</CreateHotpatchableImage>
       <FloatingPointModel>Fast</FloatingPointModel>
       <FloatingPointExceptions>false</FloatingPointExceptions>
       <RemoveUnreferencedCodeData>false</RemoveUnreferencedCodeData>
       <EnforceTypeConversionRules>true</EnforceTypeConversionRules>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
-      <LanguageStandard>stdcpp14</LanguageStandard>
-      <SDLCheck>false</SDLCheck>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
       <DisableSpecificWarnings>4201;4702;4061</DisableSpecificWarnings>
-	  <BufferSecurityCheck>false</BufferSecurityCheck>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <ExceptionHandling>SyncCThrow</ExceptionHandling>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -1362,6 +1276,7 @@ start /D "$(OutDir)" "SK.Inject" SKIM64.exe +Inject 2&gt;nul 1&gt;nul Exit 0</Co
     <ClInclude Include="depends\DirectXTex\DirectXTexP.h" />
     <ClInclude Include="depends\DirectXTex\Filters.h" />
     <ClInclude Include="depends\DirectXTex\scoped.h" />
+    <ClInclude Include="include\SpecialK\plugin\nier.h" />
     <ClInclude Include="include\imgui\backends\imgui_d3d11.h" />
     <ClInclude Include="include\imgui\backends\imgui_d3d9.h" />
     <ClInclude Include="include\imgui\backends\imgui_gl3.h" />
@@ -1416,6 +1331,7 @@ start /D "$(OutDir)" "SK.Inject" SKIM64.exe +Inject 2&gt;nul 1&gt;nul Exit 0</Co
     <ClInclude Include="include\SpecialK\utility.h" />
     <ClInclude Include="include\SpecialK\vulkan_backend.h" />
     <ClInclude Include="include\SpecialK\DLL_VERSION.H" />
+    <ClInclude Include="include\SpecialK\widgets\widget.h" />
     <ClInclude Include="include\SpecialK\window.h" />
     <ClInclude Include="include\stb\rect_pack.h" />
     <ClInclude Include="include\stb\textedit.h" />
@@ -1696,7 +1612,6 @@ start /D "$(OutDir)" "SK.Inject" SKIM64.exe +Inject 2&gt;nul 1&gt;nul Exit 0</Co
       <WholeProgramOptimization Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</WholeProgramOptimization>
       <WholeProgramOptimization Condition="'$(Configuration)|$(Platform)'=='Installer|x64'">false</WholeProgramOptimization>
     </ClCompile>
-    <ClCompile Include="src\plugins\ffencer_ad.cpp" />
     <ClCompile Include="src\plugins\nier.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='TBFix|Win32'">true</ExcludedFromBuild>
@@ -1707,15 +1622,6 @@ start /D "$(OutDir)" "SK.Inject" SKIM64.exe +Inject 2&gt;nul 1&gt;nul Exit 0</Co
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Installer|Win32'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="src\plugins\plugin_mgr.cpp" />
-    <ClCompile Include="src\plugins\rime.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='TBFix|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='FAR|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='TZFix|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='UnX|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Installer|Win32'">true</ExcludedFromBuild>
-    </ClCompile>
     <ClCompile Include="src\render_backend.cpp">
       <WholeProgramOptimization Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</WholeProgramOptimization>
       <WholeProgramOptimization Condition="'$(Configuration)|$(Platform)'=='TBFix|Win32'">false</WholeProgramOptimization>
@@ -2184,6 +2090,12 @@ start /D "$(OutDir)" "SK.Inject" SKIM64.exe +Inject 2&gt;nul 1&gt;nul Exit 0</Co
       <WholeProgramOptimization Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</WholeProgramOptimization>
       <WholeProgramOptimization Condition="'$(Configuration)|$(Platform)'=='Installer|x64'">false</WholeProgramOptimization>
     </ClCompile>
+    <ClCompile Include="src\widgets\cpu_widget.cpp" />
+    <ClCompile Include="src\widgets\d3d11_pipeline_widget.cpp" />
+    <ClCompile Include="src\widgets\frame_pacing.cpp" />
+    <ClCompile Include="src\widgets\gpu_widget.cpp" />
+    <ClCompile Include="src\widgets\volume_control.cpp" />
+    <ClCompile Include="src\widgets\widget.cpp" />
     <ClCompile Include="src\window.cpp">
       <WholeProgramOptimization Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</WholeProgramOptimization>
       <WholeProgramOptimization Condition="'$(Configuration)|$(Platform)'=='TBFix|Win32'">false</WholeProgramOptimization>

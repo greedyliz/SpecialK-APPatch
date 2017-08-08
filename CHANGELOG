@@ -1,3 +1,80 @@
+0.8.33
+
+ + Fixed low-resolution issues with the EULA window
+ + Most analytical graphs are now multi-colored instead of trying to determine
+     a single color to represent the quality of the entire dataset.
+ + Added new options to the framerate limiter (disabled by default) to continue
+     driving a game's window message pump if it renders from the same thread as it
+       handles input.
+  >> Should reduce input latency and help in games like FFX
+  >> You must turn Busy-Wait limiting off in order to use this
+
+
+0.8.32
+
+  * Profile Name Collision Avoidance
+ ====================================
+
+ + Global Injector Profiles for Steam games use the application name as defined by the game's manifest
+   >> Prior to this, they used <app_name.exe>, which was too generic.
+
+ + This is a two-stage process that involves booting SteamAPI up to determine the AppID and then
+     parsing the manifest.
+
+   >> Translation and mapping data for each game is maintained in a new AppCache\... directory structure
+   >> Profile migration occurs automatically, but for some games my overlay may not render correctly
+        the first time you run a pre-migrated game.
+   >> In some cases, deleting the original <app_name.exe> directory may even be necessary.
+
+ + Later versions of Special K will allow blacklisting launchers and other components that share Steam AppIDs
+
+
+0.8.31
+
+ + Fixed Steam DRM issues in DOOMx64 and a couplf of other OpenGL games
+ + Added a battery meter to the framepacing widget
+ + Added an option to draw a border around widgets
+
+ * Added support for gamepad manipulation of widgets
+ ===================================================
+  > Enter gamepad exclusive input mode, then hold Square (PlayStation) or X (Xbox)
+      and select a widget by pressing the shoulder buttons.
+  > Moving a widget can be done by holding Square / X and moving the left analog stick
+  > Double-tapping the Cross (PlayStation) or A (Xbox) buttons will open widget config
+ 
+ + Removed Alt+F4 input hack for Trails of Cold Steel; it is obsolete
+
+
+0.8.30
+
+ [.3]
+  + Added D3D11 Graphics Pipeline Widget, it displays most of the important stats from the
+      shader analytics feature (Ctrl + Shift + R) over a 5 to 10-second history.
+  + Added D3D11 SwapChain Menu, I'll fill the stuff in with tooltips later.
+   >> This mostly benefits Windows 10 users
+  + Fixed Trails of Cold Steel Alt+F4 behavior so it no longer exits if you're trying to
+      close a different program
+  + Added 1 frame swapchain latency in Flip Mode to ensure G-Sync doesn't destroy timing :)
+   >> Will make this an option and restore the original latency reducing measures for
+        non-G-Sync users in a future update.
+
+ [.2]
+  + Added CPU Monitor as an official widget, with OSD config and all
+  + Added grid rulers for docked widgets while moving them
+  + Added option to disable resizing widgets
+  + Added persistent storage of widget positions
+  + Added user-defined min/max size constraints to widgets
+  + Fixed keybind parsing problems with numpad and Left/Right Alt keys
+
+ [.1]
+  + Fixed D3D8 / DDraw Wrapping
+
+ + Added persistent config to some of the widgets (Volume Control / GPU Stats / Framepacing)
+  >> Right click those widgets to open a config menu for them
+ + Fixed DDRAW / D3D8 wrapper problems
+ + Corrected scaling on menus
+
+
 0.8.29
 
  + The peak volume meter is now a histogram, assigned color based on channel
@@ -9,6 +86,7 @@
  + Disabled a few of the optimizations from 0.8.28 for compatibility with GeForce Experience
   >> Will investigate further in the future
 
+
 0.8.28
 
  + Removed tooltips from graph data views
@@ -18,6 +96,7 @@
      disk I/O performance
  + Restored multi-threaded DLL analysis at startup (performance)
 
+
 0.8.27
 
  + Added OSD Widgets (framepacing and CPU load)
@@ -25,6 +104,7 @@
  + Changed Special K's config menu to work similar to a Mac, for easier access
      to the branches sub-menu at lower resolutions
  + Fixed various Windows 7 issues
+
 
 0.8.26
 
@@ -43,6 +123,7 @@
           those stats sometimes crash games is ... because the Steam overlay holds a lock.
    >> Tsk, tsk, Steam - other people need those services too, damit :)
 
+
 0.8.25:
 
  + Fixed mouse input in Mouse Effect: Andromeda, *AGAIN*.
@@ -58,6 +139,7 @@
      render enhancing mod is present.
  + Fixed rare texture cache hash collision problem for textures that are removed from the cache
      because a graphics engine has altered them.
+
 
 0.8.24.4:
 
@@ -83,6 +165,7 @@
  + Improved thread-safety in D3D11 shader mod tools; still can't safely debug Dishonored 2
  + Fixed input support in Final Fantasy 8
 
+
 0.8.23:
 
  + Fixed potential startup deadlock with Steam Overlay and CoInitializeSecurity (...)
@@ -90,6 +173,7 @@
  + Fixed (evict-on-update) D3D11 texture cache in The Witcher 3 and Divinity: Original Sin
  + Added logs/installer.log when installing through SKIM
  + Added module name and fixed newline endings in game_output.log
+
 
 0.8.22:
 
@@ -104,6 +188,7 @@
              running; should make using centered scaling modes a bit more intuitive.
  + [Misc]  Added injection stats to Help menu, mouseover Global Injector version to see
              basic information about games recently played.
+
 
 0.8.21:
 
@@ -122,6 +207,7 @@
  + [SKIM]   The commandline switch -Inject will now kill any running injection instances
               and exit
 
+
 0.8.20:
 
  + [D3D11] Added texture updae frequency (0 = Manually Refresh, 1+ = Auto) for the
@@ -134,6 +220,7 @@
  + [D3D9]  Fixed swapchain recovery afer device loss
  + [GL]    Improved startup time
 
+
 0.8.19:
 
  + [D3D11] Re-wrote stateblock code to minimize reference counting problems
@@ -142,6 +229,7 @@
  + Added version to compatibility menu
  + Improved compatibility menu and update menu's input focus behavior
 
+
 0.8.18:
  
  + Added version info to wrapper DLL installations; updating is not supported
@@ -149,6 +237,7 @@
      global profile.
  + Uninstalling a wrapper DLL copies the local config back to the global profile
  + Fixed G-Sync indicator in D3D11
+
 
 0.8.17:
 
@@ -159,6 +248,7 @@
        load.
  + Temporarily re-enabled auto-update.
 
+
 0.8.16:
  + Renamed Window/Fullscreen override options now that they work in multiple APIs
      (refer to Display.Output)
@@ -167,6 +257,7 @@
  + Extended screen mode option to include D3D11
  + Changed the D3D9 screen mode option to a combobox for mode and checkbox for
      permanent override.
+
 
 0.8.15:
 
@@ -185,6 +276,7 @@
  + Added sleepless render / window thread options to framerate limiter to fix
      games like LEGO City Undercover, that trash their window's message pump.
  + Added Fullscreen override option to control panel for D3D9 games
+
 
 0.8.14:
 
@@ -214,6 +306,7 @@
  + Fixed Achievement Popups in Senkran Kagura: Shinovi Versus
  + Fixed Overlay Rendering in Pillars of Eternity / Tyranny / Torment
 
+
 0.8.13:
 
  + Removed Chinese Unicode code points from ImGui font; added Latin punctuation
@@ -237,6 +330,7 @@
  + Added Shader Disassembly View (D3D11)
  + Added option to disable DebugBreak (...) in kernel32.dll
  + Added fix for incorrectly packed compressed DDS textures
+
 
 0.8.12.3:
 

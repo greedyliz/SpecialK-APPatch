@@ -58,6 +58,8 @@
 // PlaySound
 #pragma comment (lib, "winmm.lib")
 
+#pragma warning (disable: 4706)
+
          iSK_Logger       steam_log;
 
 volatile ULONG            __SK_Steam_init = FALSE;
@@ -1169,7 +1171,8 @@ public:
         }
 
         friend_stats [friend_idx].percent_unlocked =
-          (float)unlocked / (float)stats->GetNumAchievements ();
+          static_cast <float> (unlocked) /
+          static_cast <float> (stats->GetNumAchievements ());
 
         // Second pass over all achievements, incrementing the number of friends who
         //   can potentially unlock them.
@@ -1352,8 +1355,8 @@ public:
       else
       {
         float progress = 
-          (float)pParam->m_nCurProgress /
-          (float)pParam->m_nMaxProgress;
+          static_cast <float> (pParam->m_nCurProgress) /
+          static_cast <float> (pParam->m_nMaxProgress);
 
         steam_log.Log (L" Achievement: '%hs' (%hs) - "
                        L"Progress %lu / %lu (%04.01f%%)",
@@ -1517,8 +1520,8 @@ public:
         {
           if (timeGetTime () < (*it).time + POPUP_DURATION_MS)
           {
-            float percent_of_lifetime = ((float)((*it).time + POPUP_DURATION_MS - timeGetTime ()) / 
-                                                (float)POPUP_DURATION_MS);
+            float percent_of_lifetime = (static_cast <float> ((*it).time + POPUP_DURATION_MS - timeGetTime ()) / 
+                                         static_cast <float> (POPUP_DURATION_MS));
 
             //if (SK_PopupManager::getInstance ()->isPopup ((*it).window)) {
               CEGUI::Window* win = (*it).window;
@@ -1771,7 +1774,9 @@ public:
           unlocked++;
       }
 
-      percent_unlocked = (float)unlocked / (float)stats->GetNumAchievements ();
+      percent_unlocked =
+        static_cast <float> (unlocked) /
+        static_cast <float> (stats->GetNumAchievements ());
     }
   }
 
@@ -1789,8 +1794,6 @@ public:
         std::wstring (
           SK_GetDocumentsDir () + L"\\My Mods\\SpecialK\\Global\\achievements.ini"
         ).c_str () );
-
-      achievement_ini.parse ();
 
       // If the config file is empty, establish defaults and then write it.
       if (achievement_ini.get_sections ().size () == 0)
@@ -2040,7 +2043,8 @@ protected:
           pSys->getRenderer ()->createTexture (achievement->name_);
 
         Tex.loadFromMemory ( achievement->icons_.achieved,
-                               CEGUI::Sizef ((float)w, (float)h),
+                               CEGUI::Sizef ( static_cast <float> (w),
+                                              static_cast <float> (h) ),
                                  CEGUI::Texture::PF_RGBA );
 
         ((CEGUI::BasicImage &)img).setTexture (&Tex);
@@ -2611,6 +2615,12 @@ SK_Steam_KillPump (void)
 }
 
 
+extern const wchar_t*
+SK_GetFullyQualifiedApp (void);
+
+std::string
+SK_UseManifestToGetAppName (uint32_t appid);
+
 uint32_t
 SK::SteamAPI::AppID (void)
 {
@@ -2618,11 +2628,35 @@ SK::SteamAPI::AppID (void)
 
   if (utils != nullptr)
   {
-    static uint32_t id = utils->GetAppID ();
+    static uint32_t id    = 0;
+    static bool     first = true;
+
+    if (first)
+    {
+      id = utils->GetAppID ();
+
+      if (config.system.central_repository)
+      {
+        if (id != 0)
+        {
+          first = false;
+
+          app_cache_mgr.addAppToCache      (SK_GetFullyQualifiedApp (), SK_GetHostApp (), SK_UTF8ToWideChar (SK_UseManifestToGetAppName (id)).c_str (), id);
+          app_cache_mgr.saveAppCache       (true);
+
+          app_cache_mgr.loadAppCacheForExe (SK_GetFullyQualifiedApp ());
+
+          // Trigger profile migration if necessary
+          app_cache_mgr.getConfigPathForAppID (id);
+        }
+      }
+    }
 
     // If no AppID was manually set, let's assign one now.
     if (config.steam.appid == 0)
+    {
       config.steam.appid = id;
+    }
 
     return id;
   }
@@ -2810,7 +2844,7 @@ SK_UseManifestToGetAppName (uint32_t appid)
         if (szAppName != nullptr)
         {
           // Make sure everything is lowercase
-          strncpy (szAppName, "\"name\"", strlen ("\"name\""));
+          memcpy (szAppName, "\"name\"", 6);
 
           sscanf ( szAppName,
                      "\"name\" \"%512[^\"]\"",
@@ -2881,7 +2915,7 @@ SK_UseManifestToGetAppName (uint32_t appid)
       *szAppName = '\0';
 
       // Make sure everything is lowercase
-      strncpy (szAppName, "\"name\"", strlen ("\"name\""));
+      memcpy (szAppName, "\"name\"", 6);
 
       sscanf ( szAppName,
                  "\"name\" \"%512[^\"]\"",
@@ -3532,7 +3566,8 @@ SK_SteamAPI_FriendStatPercentage (void)
   if (SK_SteamAPI_FriendStatsFinished ())
     return 1.0f;
 
-  return (float)next_friend / (float)friend_count;
+  return static_cast <float> (next_friend) /
+         static_cast <float> (friend_count);
 }
 
 const char*

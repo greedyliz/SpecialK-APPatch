@@ -62,7 +62,7 @@ SK_WideCharToUTF8 (std::wstring in)
   std::string out;
               out.resize (len);
 
-  WideCharToMultiByte           ( CP_UTF8, 0x00, in.c_str (), (int)in.length (), (char *)out.data (), len, nullptr, FALSE );
+  WideCharToMultiByte           ( CP_UTF8, 0x00, in.c_str (), static_cast <int> (in.length ()), const_cast <char *> (out.data ()), len, nullptr, FALSE );
 
   return out;
 }
@@ -75,7 +75,7 @@ SK_UTF8ToWideChar (std::string in)
   std::wstring out;
                out.resize (len);
 
-  MultiByteToWideChar           ( CP_UTF8, 0x00, in.c_str (), (int)in.length (), (wchar_t *)out.data (), len );
+  MultiByteToWideChar           ( CP_UTF8, 0x00, in.c_str (), static_cast <int> (in.length ()), const_cast <wchar_t *> (out.data ()), len );
 
   return out;
 }
@@ -152,7 +152,7 @@ SK_GetUserProfileDir (wchar_t* buf, uint32_t* pdwLen)
   if (! OpenProcessToken (GetCurrentProcess (), TOKEN_READ, &hToken.m_h))
     return false;
 
-  if (! GetUserProfileDirectory (hToken, buf, (DWORD *)pdwLen))
+  if (! GetUserProfileDirectory (hToken, buf, reinterpret_cast <DWORD *> (pdwLen)))
   {
     return false;
   }
@@ -663,10 +663,10 @@ uint32_t
 __cdecl
 crc32 (uint32_t crc, const void *buf, size_t size)
 {
-  const uint8_t *p = nullptr;
+  const uint8_t *p =
+       reinterpret_cast <const uint8_t *> (buf);
 
-    p = (uint8_t *)buf;
-  crc =      crc ^ ~0U;
+  crc = crc ^ ~0U;
 
   while (size--)
   {
@@ -1590,8 +1590,7 @@ SK_IsDLLSpecialK (const wchar_t* wszName)
   UINT     cbTranslatedBytes = 0,
            cbProductBytes    = 0;
 
-  uint8_t  cbData      [4096] = { };
-  wchar_t  wszPropName [64]   = { };
+  uint8_t  cbData     [4096] = { };
 
   wchar_t* wszProduct = nullptr; // Will point somewhere in cbData
 
@@ -1620,6 +1619,8 @@ SK_IsDLLSpecialK (const wchar_t* wszName)
                          (LPVOID *)&lpTranslate,
                                    &cbTranslatedBytes ) && cbTranslatedBytes && lpTranslate )
   {
+    wchar_t wszPropName [64] = { };
+
     wsprintfW ( wszPropName,
                   L"\\StringFileInfo\\%04x%04x\\ProductName",
                     lpTranslate [0].wLanguage,
@@ -1644,8 +1645,7 @@ SK_GetDLLVersionStr (const wchar_t* wszName)
            cbProductBytes    = 0,
            cbVersionBytes    = 0;
 
-  uint8_t  cbData      [4096] = { };
-  wchar_t  wszPropName [64]   = { };
+  uint8_t  cbData     [4096] = { };
 
   wchar_t* wszFileDescrip = nullptr; // Will point somewhere in cbData
   wchar_t* wszFileVersion = nullptr; // "
@@ -1669,6 +1669,8 @@ SK_GetDLLVersionStr (const wchar_t* wszName)
                            (LPVOID *)&lpTranslate,
                                      &cbTranslatedBytes ) && cbTranslatedBytes && lpTranslate )
   {
+    wchar_t wszPropName [64] = { };
+
     wsprintfW ( wszPropName,
                   L"\\StringFileInfo\\%04x%04x\\FileDescription",
                     lpTranslate [0].wLanguage,
@@ -2703,15 +2705,19 @@ SK_FormatString (char const* const _Format, ...)
   }
   va_end (_ArgList);
 
-  std::unique_ptr <char> out (new char [len + 1] { });
+  char* out = new char [len + 1] { };
 
   va_start (_ArgList, _Format);
   {
-    len = vsprintf (out.get (), _Format, _ArgList);
+    len = vsprintf (out, _Format, _ArgList);
   }
   va_end (_ArgList);
 
-  return out.get ();
+  std::string str_out (out);
+
+  delete [] out;
+
+  return str_out;
 }
 
 std::wstring
@@ -2727,15 +2733,19 @@ SK_FormatStringW (wchar_t const* const _Format, ...)
   }
   va_end (_ArgList);
 
-  std::unique_ptr <wchar_t> out (new wchar_t [len + 1] { });
+  wchar_t* out = new wchar_t [len + 1] { };
 
   va_start (_ArgList, _Format);
   {
-    len = _vswprintf (out.get (), _Format, _ArgList);
+    len = _vswprintf (out, _Format, _ArgList);
   }
   va_end (_ArgList);
 
-  return out.get ();
+  std::wstring wstr_out (out);
+
+  delete [] out;
+
+  return wstr_out;
 }
 
 

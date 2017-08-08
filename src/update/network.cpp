@@ -92,7 +92,7 @@ WINAPI
 DownloadThread (LPVOID user)
 {
   sk_internet_get_t* get =
-    (sk_internet_get_t *)user;
+    static_cast <sk_internet_get_t *> (user);
 
   auto TaskMsg =
     [&get](UINT Msg, WPARAM wParam, LPARAM lParam) ->
@@ -107,34 +107,32 @@ DownloadThread (LPVOID user)
       };
 
   auto SetProgress = 
-    [&](double cur, double max) ->
-      void
-      {
-        TaskMsg ( TDM_SET_PROGRESS_BAR_POS,
-                    static_cast <INT16> (
-                      static_cast <double> (MAXINT16) *
-                               ( cur / std::max (1.0, max) )
-                    ), 0L );
-      };
+    [&](double cur, double max)
+    {
+      TaskMsg ( TDM_SET_PROGRESS_BAR_POS,
+                  static_cast <INT16> (
+                    static_cast <double> (MAXINT16) *
+                             ( cur / std::max (1.0, max) )
+                  ), 0L );
+    };
 
   auto SetErrorState =
-    [&](void) ->
-      void
-      {
-        TaskMsg (TDM_SET_PROGRESS_BAR_STATE, PBST_NORMAL, 0L);
-        TaskMsg (TDM_SET_PROGRESS_BAR_RANGE, 0L,          MAKEWPARAM (0, 1));
-        TaskMsg (TDM_SET_PROGRESS_BAR_POS,   1,           0L);
-        TaskMsg (TDM_SET_PROGRESS_BAR_STATE, PBST_ERROR,  0L);
+    [&](void)
+    {
+      TaskMsg (TDM_SET_PROGRESS_BAR_STATE, PBST_NORMAL, 0L);
+      TaskMsg (TDM_SET_PROGRESS_BAR_RANGE, 0L,          MAKEWPARAM (0, 1));
+      TaskMsg (TDM_SET_PROGRESS_BAR_POS,   1,           0L);
+      TaskMsg (TDM_SET_PROGRESS_BAR_STATE, PBST_ERROR,  0L);
 
-        TaskMsg (TDM_ENABLE_BUTTON, IDYES,    1); // Re-enable the update button
-        TaskMsg (TDM_ENABLE_BUTTON, 0,        1); // Re-enable remind me later button
-        TaskMsg (TDM_ENABLE_BUTTON, IDCANCEL, 1); // Re-enable cancel button
+      TaskMsg (TDM_ENABLE_BUTTON, IDYES,    1); // Re-enable the update button
+      TaskMsg (TDM_ENABLE_BUTTON, 0,        1); // Re-enable remind me later button
+      TaskMsg (TDM_ENABLE_BUTTON, IDCANCEL, 1); // Re-enable cancel button
 
-        // Re-name the update button from Yes to Retry
-        SetDlgItemTextW (get->hTaskDlg, IDYES, L"Retry");
+      // Re-name the update button from Yes to Retry
+      SetDlgItemTextW (get->hTaskDlg, IDYES, L"Retry");
 
-        get->status = STATUS_FAILED;
-      };
+      get->status = STATUS_FAILED;
+    };
 
   TaskMsg (TDM_SET_PROGRESS_BAR_RANGE, 0L,          MAKEWPARAM (0, MAXINT16));
   TaskMsg (TDM_SET_PROGRESS_BAR_STATE, PBST_NORMAL, 0L);
@@ -420,8 +418,6 @@ RemindMeLater_DlgProc (
 
         iSK_INI install_ini (SK_Version_GetInstallIniPath ().c_str ());
 
-        install_ini.parse ();
-
         bool empty = false;
 
         if (! install_ini.get_sections ().size ())
@@ -498,7 +494,7 @@ DownloadDialogCallback (
   _In_ LONG_PTR dwRefData )
 {
   sk_internet_get_t* get =
-    (sk_internet_get_t *)dwRefData;
+    reinterpret_cast <sk_internet_get_t *> (dwRefData);
 
 
   // Don't allow this window to be used while the
@@ -713,7 +709,7 @@ Update_DlgProc (
         }
       }
 
-      swprintf ( wszBackupSize, L"%4lu Files, %5.2f MiB",
+      swprintf ( wszBackupSize, L"%4u Files, %5.2f MiB",
                    backup_count,
                      (double)backup_size / (1024.0 * 1024.0) );
 
@@ -1016,7 +1012,7 @@ extern volatile LONG SK_bypass_dialog_active;
 
 HRESULT
 __stdcall
-SK_UpdateSoftware1 (const wchar_t* wszProduct, bool force)
+SK_UpdateSoftware1 (const wchar_t*, bool force)
 {
 #define INJECTOR
 #ifndef INJECTOR
@@ -1087,16 +1083,12 @@ SK_UpdateSoftware1 (const wchar_t* wszProduct, bool force)
   iSK_INI install_ini (SK_Version_GetInstallIniPath ().c_str ());
   iSK_INI repo_ini    (SK_Version_GetRepoIniPath    ().c_str ());
 
-  install_ini.parse ();
-  repo_ini.parse    ();
-
   struct {
     signed int   installed;
     wchar_t      branch  [128];
 
     struct {
-      signed int in_branch; // TODO
-      signed int overall;
+      signed int in_branch; // TODOv
       wchar_t    package [128];
     } latest;
   } build;
@@ -1133,7 +1125,7 @@ SK_UpdateSoftware1 (const wchar_t* wszProduct, bool force)
   else
   {
     swscanf ( installed_ver.get_value (L"InstallPackage").c_str (),
-                L"%128[^,],%li",
+                L"%128[^,],%i",
                   wszCurrentBuild,
                     &build.installed );
     wcscpy (build.branch, installed_ver.get_value (L"Branch").c_str ());
@@ -1157,7 +1149,7 @@ SK_UpdateSoftware1 (const wchar_t* wszProduct, bool force)
                     latest_ver.get_value (L"Description").c_str () );
 
   swscanf ( latest_ver.get_value (L"InstallPackage").c_str (),
-              L"%128[^,],%li",
+              L"%128[^,],%i",
                 build.latest.package,
                   &build.latest.in_branch );
 

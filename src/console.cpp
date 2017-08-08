@@ -37,6 +37,7 @@
 #include <SpecialK/command.h>
 #include <SpecialK/utility.h>
 #include <SpecialK/osd/text.h>
+#include <SpecialK/widgets/widget.h>
 
 #include <mmsystem.h>
 #pragma comment (lib, "winmm.lib")
@@ -122,7 +123,8 @@ SK_Console::Draw (void)
 void
 SK_Console::Start (void)
 {
-  static HMODULE hModPPrinny = GetModuleHandle (L"PrettyPrinny.dll");
+  static HMODULE hModPPrinny =
+    GetModuleHandle (L"PrettyPrinny.dll");
 
   // STUPID HACK UNTIL WE PROPERLY UNIFY SK AND TSFIX'S CONSOLE.
   if (hModPPrinny)
@@ -139,7 +141,8 @@ SK_Console::Start (void)
 void
 SK_Console::End (void)
 {
-  static HMODULE hModPPrinny = GetModuleHandle (L"PrettyPrinny.dll");
+  static HMODULE hModPPrinny =
+    GetModuleHandle (L"PrettyPrinny.dll");
 
   // STUPID HACK UNTIL WE PROPERLY UNIFY SK AND TZFIX'S CONSOLE.
   if (hModPPrinny)
@@ -167,8 +170,7 @@ SK_PluginKeyPress (BOOL Control, BOOL Shift, BOOL Alt, BYTE vkCode)
   UNREFERENCED_PARAMETER (Shift);
   UNREFERENCED_PARAMETER (Alt);
 
-  static bool keys [256];
-  keys [vkCode & 0xFF] = ! keys [vkCode & 0xFF];
+  SK_ImGui_Widgets.DispatchKeybinds (Control, Shift, Alt, vkCode);
 }
 
 BOOL
@@ -229,7 +231,7 @@ SK_HandleConsoleKey (bool keyDown, BYTE vkCode, LPARAM lParam)
       if (SK_ImGui_KeyPress (keys_ [VK_CONTROL], keys_ [VK_SHIFT], keys_ [VK_MENU], vkCode))
       {
         // Then give any plug-ins a chance
-        SK_PluginKeyPress (keys_ [VK_CONTROL], keys_ [VK_SHIFT], keys_ [VK_MENU], vkCode);
+        SK_PluginKeyPress   (keys_ [VK_CONTROL], keys_ [VK_SHIFT], keys_ [VK_MENU], vkCode);
 
         // Finally, toggle the command console
         if (keys_ [VK_CONTROL] && keys_ [VK_SHIFT] && vkCode == VK_TAB)
@@ -342,7 +344,7 @@ SK_HandleConsoleKey (bool keyDown, BYTE vkCode, LPARAM lParam)
       if (keyDown)
         keys_ [vkCode] = 0x81;
       else
-        keys_ [vkCode] = 0x0;
+        keys_ [vkCode] = 0x00;
 
       if (keyDown && ( (lParam & 0x40000000UL) == 0 || new_press ))
       {
@@ -401,12 +403,12 @@ SK_HandleConsoleKey (bool keyDown, BYTE vkCode, LPARAM lParam)
         if (1 == ToAsciiEx ( vkCode,
                               scanCode,
                               keys_,
-                            (LPWORD)key_str,
+   reinterpret_cast <LPWORD> (key_str),
                               0,
                               GetKeyboardLayout (0) ) &&
              isprint ( *key_str ) )
         {
-          strncat (text, (char *)key_str, 1);
+          strncat (text, reinterpret_cast <char *> (key_str), 1);
           command_issued = false;
         }
       }
@@ -440,15 +442,15 @@ SK_DrawConsole (void)
   if (bNoConsole)
     return;
 
-  SK_Console* pConsole = SK_Console::getInstance ();
-  pConsole->Draw ();
+  SK_Console::getInstance ()->Draw ();
 }
 
 BOOL
 __stdcall
 SK_IsConsoleVisible (void)
 {
-  return SK_Console::getInstance ()->isVisible ();
+  return
+    SK_Console::getInstance ()->isVisible ();
 }
 
-SK_Console* SK_Console::pConsole      = nullptr;
+SK_Console* SK_Console::pConsole = nullptr;
