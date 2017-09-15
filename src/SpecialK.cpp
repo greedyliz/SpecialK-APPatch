@@ -18,7 +18,6 @@
  *   If not, see <http://www.gnu.org/licenses/>.
  *
 **/
-#define _CRT_SECURE_NO_WARNINGS
 
 #include <SpecialK/diagnostics/compatibility.h>
 
@@ -61,7 +60,7 @@
 
 
 // We need this to load embedded resources correctly...
-volatile HMODULE hModSelf              = 0;
+volatile HMODULE hModSelf              = nullptr;
 
 
 volatile ULONG      __SK_DLL_Attached     = FALSE;
@@ -211,9 +210,9 @@ SK_EstablishDllRole (HMODULE hModule)
   //___________________________________________________________________________
 
   //
-  // Init Once ===> C++14 allows constexpr hashtables, use those instead dummy!
+  // Init Once ===> C++14 allows constexpr hash tables, use those instead dummy!
   //
-  if (blacklist.size () == 0)
+  if (blacklist.empty ())
   {
     blacklist.reserve (512);
 
@@ -283,6 +282,7 @@ SK_EstablishDllRole (HMODULE hModule)
     blacklist.emplace (L"ActivationUI.exe");
     blacklist.emplace (L"zosSteamStarter.exe");
     blacklist.emplace (L"notepad.exe");
+    blacklist.emplace (L"mspaint.exe");
     blacklist.emplace (L"7zFM.exe");
     blacklist.emplace (L"WinRar.exe");
     blacklist.emplace (L"EAC.exe");
@@ -296,6 +296,8 @@ SK_EstablishDllRole (HMODULE hModule)
     blacklist.emplace (L"GameBarPresenceWriter.exe");
     blacklist.emplace (L"OAWrapper.exe");
     blacklist.emplace (L"NvOAWrapperCache.exe");
+    blacklist.emplace (L"waifu2x-caffe.exe");
+    blacklist.emplace (L"waifu2x-caffe-cui.exe");
 
     blacklist.emplace (L"GameServer.exe");// Sacred   Game Server
     blacklist.emplace (L"s2gs.exe");      // Sacred 2 Game Server
@@ -838,7 +840,7 @@ DllMain ( HMODULE hModule,
       //
       //          0xc0000142
       //
-      if (InterlockedCompareExchangePointer ((LPVOID *)&hModSelf, hModule, 0))
+      if (InterlockedCompareExchangePointer ((LPVOID *)&hModSelf, hModule, nullptr))
       {
         return FALSE;
       }
@@ -846,8 +848,7 @@ DllMain ( HMODULE hModule,
       // We use SKIM for injection and rundll32 for various tricks involving restarting
       //   the currently running game; neither needs or even wants this DLL fully
       //     initialized!
-      if ( StrStrIW (SK_GetHostApp (), L"SKIM") ||
-           StrStrIW (SK_GetHostApp (), L"rundll32") )
+      if (SK_HostApp.isInjectionTool ())
       {
         SK_EstablishRootPath ();
         return TRUE;
@@ -990,7 +991,7 @@ DllMain ( HMODULE hModule,
 
       if (__SK_TLS_INDEX != MAXDWORD)
       {
-        LPVOID lpvData =
+        auto lpvData =
           static_cast <LPVOID> (
             LocalAlloc ( LPTR, sizeof (SK_TLS) * SK_TLS::stack::max )
           );
@@ -1013,11 +1014,17 @@ DllMain ( HMODULE hModule,
     {
       if (__SK_TLS_INDEX != MAXDWORD)
       {
-        LPVOID lpvData =
+        auto lpvData =
           static_cast <LPVOID> (TlsGetValue (__SK_TLS_INDEX));
 
         if (lpvData != nullptr)
         {
+          if (SK_TLS_Bottom ()->known_modules.pResolved != nullptr)
+          {
+            delete SK_TLS_Bottom ()->known_modules.pResolved;
+                   SK_TLS_Bottom ()->known_modules.pResolved = nullptr;
+          }
+
           LocalFree   (lpvData);
           TlsSetValue (__SK_TLS_INDEX, nullptr);
         }
@@ -1026,4 +1033,46 @@ DllMain ( HMODULE hModule,
   }
 
   return TRUE;
+}
+
+
+
+
+
+#include <unordered_map>
+
+
+
+SK_ModuleAddrMap::SK_ModuleAddrMap (void)
+{
+}
+
+bool
+SK_ModuleAddrMap::contains (LPVOID pAddr, HMODULE* phMod)
+{
+  if (pResolved == nullptr)
+      pResolved = new std::unordered_map <LPVOID, HMODULE> ();
+
+  std::unordered_map <LPVOID, HMODULE> *pResolved_ =
+    ((std::unordered_map <LPVOID, HMODULE> *)pResolved);
+
+  if (pResolved_->count (pAddr))
+  {
+    *phMod = (*pResolved_) [pAddr];
+    return true;
+  }
+
+  return false;
+}
+
+void 
+SK_ModuleAddrMap::insert (LPVOID pAddr, HMODULE hMod)
+{
+  if (pResolved == nullptr)
+    pResolved = new std::unordered_map <LPVOID, HMODULE> ( );
+
+  std::unordered_map <LPVOID, HMODULE> *pResolved_ = 
+    ((std::unordered_map <LPVOID, HMODULE> *)pResolved);
+
+  (*pResolved_) [pAddr] = hMod;
 }

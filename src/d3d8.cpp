@@ -20,8 +20,6 @@
 **/
 
 #ifndef _WIN64
-#define _CRT_SECURE_NO_WARNINGS
-#define NOMINMAX
 
 #include <SpecialK/d3d8_backend.h>
 #include <SpecialK/dxgi_backend.h>
@@ -127,10 +125,10 @@ SK_HookD3D8 (void)
 
 
     if ( MH_OK ==
-            SK_CreateDLLHook2 ( L"d3d8.dll",
-                                 "Direct3DCreate8",
-                                  Direct3DCreate8,
-     reinterpret_cast <LPVOID *>(&Direct3DCreate8_Import) )
+            SK_CreateDLLHook2 (      L"d3d8.dll",
+                                      "Direct3DCreate8",
+                                       Direct3DCreate8,
+              static_cast_p2p <void> (&Direct3DCreate8_Import) )
         )
     {
       if (bProxy)

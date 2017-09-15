@@ -19,8 +19,6 @@
  *
 **/
 
-#define _CRT_SECURE_NO_WARNINGS
-
 #include <memory>
 
 #include <SpecialK/command.h>
@@ -38,7 +36,9 @@ SK_GetCommandProcessor (void)
 
   if (command == nullptr)
   {
-    command = new SK_ICommandProcessor ();
+    command =
+      new SK_ICommandProcessor ();
+
     InitializeCriticalSectionAndSpinCount (&cs_process_cmd, 104858);
   }
 
@@ -93,7 +93,7 @@ public:
     processor_ = cmd_proc;
   }
 
-  SK_ICommandResult execute (const char* szArgs)
+  virtual SK_ICommandResult execute (const char* szArgs) override
   {
     /* TODO: Replace with a special tokenizer / parser... */
     FILE* src = fopen (szArgs, "r");
@@ -104,7 +104,7 @@ public:
         SK_ICommandResult ( "source", szArgs,
           "Could not open file!",
           false,
-          NULL,
+          nullptr,
           this );
     }
 
@@ -128,19 +128,19 @@ public:
     return SK_ICommandResult ( "source", szArgs,
                                  "Success",
                                    num_lines,
-                                     NULL,
+                                     nullptr,
                                        this );
   }
 
-  int getNumArgs (void) {
+  virtual int getNumArgs (void) override {
     return 1;
   }
 
-  int getNumOptionalArgs (void) {
+  virtual int getNumOptionalArgs (void) override {
     return 0;
   }
 
-  const char* getHelp (void) {
+  virtual const char* getHelp (void) override {
     return "Load and execute a file containing multiple commands "
       "(such as a config file).";
   }
@@ -160,15 +160,15 @@ SK_ICommandProcessor::SK_ICommandProcessor (void)
 const SK_ICommand*
 SK_ICommandProcessor::AddCommand (const char* szCommand, SK_ICommand* pCommand)
 {
-  if (szCommand == NULL || strlen (szCommand) < 1)
-    return NULL;
+  if (szCommand == nullptr || strlen (szCommand) < 1)
+    return nullptr;
 
-  if (pCommand == NULL)
-    return NULL;
+  if (pCommand == nullptr)
+    return nullptr;
 
   /* Command already exists, what should we do?! */
-  if (FindCommand (szCommand) != NULL)
-    return NULL;
+  if (FindCommand (szCommand) != nullptr)
+    return nullptr;
 
   commands_.insert (SK_CommandRecord (szCommand, pCommand));
 
@@ -178,13 +178,10 @@ SK_ICommandProcessor::AddCommand (const char* szCommand, SK_ICommand* pCommand)
 bool
 SK_ICommandProcessor::RemoveCommand (const char* szCommand)
 {
-  if (FindCommand (szCommand) != NULL)
+  if (FindCommand (szCommand) != nullptr)
   {
-    std::unordered_map < std::string,
-                           SK_ICommand*,
-                             str_hash_compare <std::string>
-                       >::iterator
-      command = commands_.find (szCommand);
+    auto command =
+      commands_.find (szCommand);
 
     commands_.erase (command);
     return true;
@@ -196,16 +193,13 @@ SK_ICommandProcessor::RemoveCommand (const char* szCommand)
 SK_ICommand*
 SK_ICommandProcessor::FindCommand (const char* szCommand) const
 {
-  std::unordered_map < std::string,
-                         SK_ICommand*,
-                           str_hash_compare <std::string>
-                     >::const_iterator
-    command = commands_.find (szCommand);
+  auto command =
+    commands_.find (szCommand);
 
   if (command != commands_.end ())
     return (command)->second;
 
-  return NULL;
+  return nullptr;
 }
 
 
@@ -213,15 +207,15 @@ SK_ICommandProcessor::FindCommand (const char* szCommand) const
 const SK_IVariable*
 SK_ICommandProcessor::AddVariable (const char* szVariable, SK_IVariable* pVariable)
 {
-  if (szVariable == NULL || strlen (szVariable) < 1)
-    return NULL;
+  if (szVariable == nullptr || strlen (szVariable) < 1)
+    return nullptr;
 
-  if (pVariable == NULL)
-    return NULL;
+  if (pVariable == nullptr)
+    return nullptr;
 
   /* Variable already exists, what should we do?! */
-  if (FindVariable (szVariable) != NULL)
-    return NULL;
+  if (FindVariable (szVariable) != nullptr)
+    return nullptr;
 
   variables_.insert (SK_VariableRecord (szVariable, pVariable));
 
@@ -231,13 +225,10 @@ SK_ICommandProcessor::AddVariable (const char* szVariable, SK_IVariable* pVariab
 bool
 SK_ICommandProcessor::RemoveVariable (const char* szVariable)
 {
-  if (FindVariable (szVariable) != NULL)
+  if (FindVariable (szVariable) != nullptr)
   {
-    std::unordered_map < std::string,
-                           SK_IVariable*,
-                             str_hash_compare <std::string>
-                       >::iterator
-      variable = variables_.find (szVariable);
+    auto variable =
+      variables_.find (szVariable);
 
     variables_.erase (variable);
     return true;
@@ -249,16 +240,13 @@ SK_ICommandProcessor::RemoveVariable (const char* szVariable)
 const SK_IVariable*
 SK_ICommandProcessor::FindVariable (const char* szVariable) const
 {
-  std::unordered_map < std::string,
-                         SK_IVariable*,
-                           str_hash_compare <std::string>
-                     >::const_iterator
-    variable = variables_.find (szVariable);
+  auto variable =
+    variables_.find (szVariable);
 
   if (variable != variables_.end ())
     return (variable)->second;
 
-  return NULL;
+  return nullptr;
 }
 
 SK_ICommandResult
@@ -266,7 +254,7 @@ SK_ICommandProcessor::ProcessCommandLine (const char* szCommandLine)
 {
   SK_AutoCriticalSection auto_cs (&cs_process_cmd);
 
-  if (szCommandLine != NULL && strlen (szCommandLine))
+  if (szCommandLine != nullptr && strlen (szCommandLine))
   {
     char*  command_word     = _strdup (szCommandLine);
     size_t command_word_len =  strlen (command_word);
@@ -329,8 +317,8 @@ SK_ICommandProcessor::ProcessCommandLine (const char* szCommandLine)
       {
         if (command_args_len > 0)
         {
-          SK_IVarStub <bool>* bool_var = (SK_IVarStub <bool>*) var;
-          bool                bool_val = false;
+          auto* bool_var = (SK_IVarStub <bool>*) var;
+          bool  bool_val = false;
 
           /* False */
           if (! (_stricmp (cmd_args.c_str (), "false") && _stricmp (cmd_args.c_str (), "0") &&
@@ -414,7 +402,7 @@ SK_ICommandProcessor::ProcessCommandLine (const char* szCommandLine)
         if (command_args_len > 0)
         {
           //          float original_val = ((SK_IVarStub <float>*) var)->getValue ();
-          float float_val = (float)atof (cmd_args.c_str ());
+          auto float_val = (float)atof (cmd_args.c_str ());
 
           ((SK_IVarStub <float>*) var)->setValue (float_val);
         }
@@ -426,10 +414,10 @@ SK_ICommandProcessor::ProcessCommandLine (const char* szCommandLine)
         {
           const char* args = cmd_args.c_str ();
 
-          SK_IVarStub <char *>* var_stub =
+          auto* var_stub =
             (SK_IVarStub <char *>*) var;
 
-          if (var_stub->listener_ != NULL)
+          if (var_stub->listener_ != nullptr)
             var_stub->listener_->OnVarChange (var_stub, &args);
           else
             strcpy ((char *)*var_stub->var_, args);
@@ -439,13 +427,14 @@ SK_ICommandProcessor::ProcessCommandLine (const char* szCommandLine)
       uint32_t                       len = 256;
       var->getValueString (nullptr, &len);
 
-      char* pszNew = new char [len + 1] { };
+      auto* pszNew =
+        new char [len + 1] { };
 
       ++len;
 
       var->getValueString (pszNew, &len);
 
-      SK_ICommandResult ret (cmd_word.c_str (), cmd_args.c_str (), pszNew, true, var, NULL);
+      SK_ICommandResult ret (cmd_word.c_str (), cmd_args.c_str (), pszNew, true, var, nullptr);
 
       delete [] pszNew;
 
@@ -477,8 +466,10 @@ SK_ICommandProcessor::ProcessCommandFormatted (const char* szCommandFormat, ...)
   int len = _vscprintf (szCommandFormat, ap);
   va_end               (ap);
 
-  char* szFormattedCommandLine =
-    (char *)malloc (sizeof (char) * (len + 1));
+  auto* szFormattedCommandLine =
+    static_cast <char *> (
+      malloc (sizeof (char) * (len + 1))
+    );
 
   if (szFormattedCommandLine != nullptr)
   {
@@ -520,7 +511,8 @@ SK_IVarStub <bool>::getValueString ( _Out_opt_     char* szOut,
 
   if (getValue ())
   {
-    len = (uint32_t)strlen ("true");
+    len =
+      static_cast <uint32_t> (strlen ("true"));
 
     if (szOut != nullptr)
       strncpy (szOut, "true", *dwLen);
@@ -530,7 +522,8 @@ SK_IVarStub <bool>::getValueString ( _Out_opt_     char* szOut,
 
   else
   {
-    len = (uint32_t)strlen ("false");
+    len =
+      static_cast <uint32_t> (strlen ("false"));
 
     if (szOut != nullptr)
       strncpy (szOut, "false", *dwLen);
@@ -554,9 +547,9 @@ SK_IVarStub <char*>::getValueString ( _Out_opt_     char* szOut,
                                       _Inout_   uint32_t* dwLen ) const
 {
   if (szOut != nullptr)
-    strncpy (szOut, (char *)var_, *dwLen);
+    strncpy (szOut, reinterpret_cast <char *> (var_), *dwLen);
 
-  *dwLen = std::min (*dwLen, (uint32_t)strlen ((char *)var_));
+  *dwLen = std::min (*dwLen, static_cast <uint32_t> (strlen (reinterpret_cast <char *> (var_))));
 }
 
 template <>
@@ -576,7 +569,7 @@ SK_IVarStub <int>::getValueString ( _Out_opt_ char*     szOut,
   if (szOut != nullptr)
     *dwLen = snprintf (szOut, *dwLen, "%li", getValue ());
   else
-    *dwLen = std::min (*dwLen, (uint32_t)_scprintf ("%li", getValue ()));
+    *dwLen = std::min (*dwLen, static_cast <uint32_t> (_scprintf ("%li", getValue ())));
 }
 
 
@@ -597,7 +590,7 @@ SK_IVarStub <short>::getValueString ( _Out_opt_ char*     szOut,
   if (szOut != nullptr)
     *dwLen = snprintf (szOut, *dwLen, "%i", getValue ());
   else
-    *dwLen = std::min (*dwLen, (uint32_t)_scprintf ("%i", getValue ()));
+    *dwLen = std::min (*dwLen, static_cast <uint32_t> (_scprintf ("%i", getValue ())));
 }
 
 
@@ -615,13 +608,17 @@ void
 SK_IVarStub <float>::getValueString ( _Out_opt_ char*     szOut,
                                       _Inout_   uint32_t* dwLen ) const
 {
-  if (szOut != nullptr) {
+  if (szOut != nullptr)
+  {
     *dwLen = snprintf (szOut, *dwLen, "%f", getValue ());
 
     // Remove trailing 0's after the .
-    *dwLen = (uint32_t)SK_RemoveTrailingDecimalZeros (szOut, *dwLen);
-  } else {
-    *dwLen = std::min (*dwLen, (uint32_t)_scprintf ("%f", getValue ()));
+    *dwLen = static_cast <uint32_t> (SK_RemoveTrailingDecimalZeros (szOut, *dwLen));
+  }
+
+  else
+  {
+    *dwLen = std::min (*dwLen, static_cast <uint32_t> (_scprintf ("%f", getValue ())));
   }
 }
 
@@ -631,23 +628,24 @@ SK_CreateVar ( SK_IVariable::VariableType type,
                void*                      var,
                SK_IVariableListener      *pListener )
 {
-  switch (type) {
+  switch (type)
+  {
     case SK_IVariable::Float:
-      return new SK_IVarStub <float> ((float *)var, pListener);
+      return new SK_IVarStub <float>  (static_cast <float *> (var), pListener);
     case SK_IVariable::Double:
       return nullptr;
     case SK_IVariable::Boolean:
-      return new SK_IVarStub <bool> ((bool *)var, pListener);
+      return new SK_IVarStub <bool>   (static_cast <bool *>  (var), pListener);
     case SK_IVariable::Byte:
       return nullptr;
     case SK_IVariable::Short:
-      return new SK_IVarStub <short> ((short *)var, pListener);
+      return new SK_IVarStub <short>  (static_cast <short *> (var), pListener);
     case SK_IVariable::Int:
-      return new SK_IVarStub <int> ((int *)var, pListener);
+      return new SK_IVarStub <int>    (static_cast <int *>   (var), pListener);
     case SK_IVariable::LongInt:
       return nullptr;
     case SK_IVariable::String:
-      return new SK_IVarStub <char *> ((char **)var, pListener);
+      return new SK_IVarStub <char *> (static_cast <char **> (var), pListener);
   }
 
   return nullptr;

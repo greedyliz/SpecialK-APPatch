@@ -22,7 +22,7 @@
 #ifndef __SK__IMPORT_H__
 #define __SK__IMPORT_H__
 
-#include "parameter.h"
+#include <SpecialK/parameter.h>
 
 #define SK_MAX_IMPORTS 8
 
@@ -39,7 +39,7 @@ extern const std::wstring SK_IMPORT_ARCH_WIN32;
 struct import_s
 {
   // Parameters populated after load
-  HMODULE               hLibrary     = 0;
+  HMODULE               hLibrary     = nullptr;
   std::wstring          product_desc = L"";
 
   // User-defined parameters

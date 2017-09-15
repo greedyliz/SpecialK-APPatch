@@ -654,8 +654,6 @@
  - optimization: better clipping for multi-component widgets
 */
 
-#define NOMINMAX
-
 #if defined(_MSC_VER) && !defined(_CRT_SECURE_NO_WARNINGS)
 #define _CRT_SECURE_NO_WARNINGS
 #endif
@@ -2805,8 +2803,8 @@ static void NavUpdate()
 
 #include <SpecialK/console.h>
 #include <SpecialK/window.h>
-extern bool SK_ImGui_Visible;
-extern bool SK_ImGui_IsMouseRelevant (void);
+extern IMGUI_API bool SK_ImGui_Visible;
+extern bool           SK_ImGui_IsMouseRelevant (void);
 
 extern void __stdcall SK_ImGui_DrawEULA (LPVOID reserved);
 struct show_eula_s {
@@ -10955,9 +10953,11 @@ void ImGui::ShowMetricsWindow(bool* p_open)
 
 
 
+IMGUI_API
 bool SK_ImGui_Visible = false;
 
 #include <SpecialK/utility.h>
+#include <SpecialK/config.h>
 
 const ImWchar*
 SK_ImGui_GetGlyphRangesDefaultEx (void)
@@ -11264,7 +11264,7 @@ SK_ImGui_ProcessRawInput ( _In_      HRAWINPUT hRawInput,
         // VKeys 0-7 aren't on the keyboard :)
         if (VKey & 0xFFF8) // Valid Keys:  8 - 65535
         {
-          if (! ((RAWINPUT *)pData)->data.keyboard.Flags & RI_KEY_BREAK)
+          if (! (((RAWINPUT *)pData)->data.keyboard.Flags & RI_KEY_BREAK))
           {
             if (foreground)
               ImGui::GetIO ().KeysDown [VKey & 0xFF] = true;
@@ -11924,15 +11924,18 @@ ImGui_WndProcHandler ( HWND hWnd, UINT   msg,
 
     if (config.input.ui.capture_mouse)
     {
-      mouse_capture = (uMsg >= WM_MOUSEFIRST  && uMsg <= WM_MOUSELAST)       ||
-                      (uMsg >= WM_NCMOUSEMOVE && uMsg <= WM_NCXBUTTONDBLCLK);
+      mouse_capture = (uMsg >= WM_MOUSEFIRST  && uMsg <= WM_MOUSELAST);
     }
 
     if ( keyboard_capture || mouse_capture || filter_raw_input )
     {
-      if (filter_raw_input)
+      if (uMsg == WM_INPUT)
       {
-        return DefWindowProcW (hWnd, uMsg, lParam, wParam);
+        bool bUnicode =
+          IsWindowUnicode (hWnd);
+
+        ( bUnicode ? DefWindowProcW (hWnd, uMsg, lParam, wParam) :
+                     DefWindowProcA (hWnd, uMsg, lParam, wParam) );
       }
 
       return 1;
@@ -12002,6 +12005,8 @@ extern void
 SK_XInput_ZeroHaptics ( INT iJoyID );
 
 
+#include <SpecialK/steam_api.h>
+
 extern void SK_ImGui_Toggle (void);
 
 bool
@@ -12011,16 +12016,22 @@ SK_ImGui_ToggleEx (bool& toggle_ui, bool& toggle_nav)
   if (toggle_ui)
     SK_ImGui_Toggle ();
   
-  if (toggle_nav && SK_ImGui_Visible)
+  if (toggle_nav && SK_ImGui_Active ())
     nav_usable = (! nav_usable);
   
   //if (nav_usable)
     ImGui::SetNextWindowFocus ();
 
-  toggle_ui  = SK_ImGui_Visible;
+  ////void
+  ////__stdcall
+  ////SK::SteamAPI::SetOverlayState (bool active);
+  ////
+  ////SK::SteamAPI::SetOverlayState (nav_usable);
+
+  toggle_ui  = SK_ImGui_Active ();
   toggle_nav = nav_usable;
 
-  if (SK_ImGui_Visible && nav_usable)
+  if (SK_ImGui_Active () && nav_usable)
   {
     SK_Input_RememberPressedKeys ();
 
@@ -12032,10 +12043,10 @@ SK_ImGui_ToggleEx (bool& toggle_ui, bool& toggle_nav)
   //ImGui::GetIO ().NavActive = nav_usable;
 
   // Zero-out any residual haptic data
-  if (! SK_ImGui_Visible)
+  if (! SK_ImGui_Active ())
       SK_XInput_ZeroHaptics (config.input.gamepad.xinput.ui_slot);
 
-  return SK_ImGui_Visible;
+  return SK_ImGui_Active ();
 }
 
 #include <SpecialK/input/dinput8_backend.h>
@@ -12043,8 +12054,9 @@ SK_ImGui_ToggleEx (bool& toggle_ui, bool& toggle_nav)
 extern IDirectInputDevice8_GetDeviceState_pfn
         IDirectInputDevice8_GetDeviceState_GAMEPAD_Original;
 
-extern XINPUT_STATE di8_to_xi;
-extern XINPUT_STATE joy_to_xi;
+extern XINPUT_STATE  di8_to_xi;
+extern XINPUT_STATE  joy_to_xi;
+extern XINPUT_STATE* steam_to_xi;
 
 void
 SK_ImGui_PollGamepad_EndFrame (void)
@@ -12073,12 +12085,16 @@ SK_ImGui_PollGamepad_EndFrame (void)
     ZeroMemory (io.MouseDown, sizeof (bool) * 5);
   }
 
+         XINPUT_STATE state      = {      };
+  static XINPUT_STATE last_state = { 1, 0 };
 
+  bool api_bridge =
+    config.input.gamepad.native_ps4 || ( steam_to_xi != nullptr );
 
-  // Translate DirectInput to XInput, because I'm not writing multiple controller codepaths
-  //   for no good reason.
-  if (config.input.gamepad.native_ps4)
+  if (api_bridge)
   {
+    // Translate DirectInput to XInput, because I'm not writing multiple controller codepaths
+    //   for no good reason.
     JOYINFOEX joy_ex   { };
     JOYCAPSW  joy_caps { };
 
@@ -12089,14 +12105,8 @@ SK_ImGui_PollGamepad_EndFrame (void)
     joyGetPosEx    (JOYSTICKID1, &joy_ex);
     joyGetDevCapsW (JOYSTICKID1, &joy_caps, sizeof JOYCAPSW);
 
-    XINPUT_STATE
-    SK_JOY_TranslateToXInput (JOYINFOEX* pJoy, const JOYCAPSW* pCaps);
-
     SK_JOY_TranslateToXInput (&joy_ex, &joy_caps);
   }
-
-         XINPUT_STATE state      = {      };
-  static XINPUT_STATE last_state = { 1, 0 };
 
 #if 1
   state = joy_to_xi;
@@ -12104,7 +12114,7 @@ SK_ImGui_PollGamepad_EndFrame (void)
   state = di8_to_xi;
 #endif
 
-  if ( config.input.gamepad.native_ps4 ||
+  if ( api_bridge ||
        SK_XInput_PollController (config.input.gamepad.xinput.ui_slot, &state) )
   {
     if ( state.Gamepad.wButtons & XINPUT_GAMEPAD_BACK  &&
@@ -12136,10 +12146,10 @@ SK_ImGui_PollGamepad_EndFrame (void)
       {
         if (dwLastPress < timeGetTime () - LONG_PRESS)
         {
-          bool toggle_vis = (! SK_ImGui_Visible);
+          bool toggle_vis = (! SK_ImGui_Active ());
           bool toggle_nav =    true;
 
-          if (SK_ImGui_Visible)
+          if (SK_ImGui_Active ())
             SK_ImGui_ToggleEx (toggle_vis, toggle_nav);
 
           dwLastPress = MAXDWORD;
@@ -12158,7 +12168,7 @@ SK_ImGui_PollGamepad_EndFrame (void)
     ZeroMemory (&state.Gamepad, sizeof XINPUT_GAMEPAD);
 
 
-  if (SK_ImGui_Visible && config.input.gamepad.haptic_ui)
+  if (SK_ImGui_Active () && config.input.gamepad.haptic_ui)
   {
     ImGuiContext& g =
       *GImGui;
@@ -12203,11 +12213,8 @@ SK_ImGui_PollGamepad_EndFrame (void)
 }
 
 
+#include <SpecialK/core.h>
 #include <SpecialK/widgets/widget.h>
-
-ULONG
-__stdcall
-SK_GetFramesDrawn (void);
 
 #define SK_Threshold(x,y) (x) > (y) ? ( (x) - (y) ) : 0
 
@@ -12238,13 +12245,16 @@ SK_ImGui_PollGamepad (void)
   for (int i = 0; i < ImGuiNavInput_COUNT; i++)
     io.NavInputs [i] = 0.0f;
 
+  bool api_bridge =
+    config.input.gamepad.native_ps4 || ( steam_to_xi != nullptr );
+
 #if 1
   state = joy_to_xi;
 #else
   state = di8_to_xi;
 #endif
 
-  if ( ( config.input.gamepad.native_ps4 ||
+  if ( ( api_bridge ||
          SK_XInput_PollController ( config.input.gamepad.xinput.ui_slot,
                                       &state
                                   )

@@ -19,9 +19,6 @@
  *
 **/
 
-#define _CRT_SECURE_NO_WARNINGS
-#define NOMINMAX
-
 #include <Windows.h>
 #include <SpecialK/window.h>
 
@@ -194,7 +191,7 @@ SK_FindRootWindow (DWORD proc_id)
   window_t win;
 
   win.proc_id  = proc_id;
-  win.root     = 0;
+  win.root     = nullptr;
 
   EnumWindows (SK_EnumWindows, (LPARAM)&win);
 
@@ -235,7 +232,7 @@ auto DeferCommand = [&] (const char* szCommand)
 class SK_WindowManager : public SK_IVariableListener
 {
 public:
-  static bool StyleHasBorder (DWORD_PTR style)
+  static constexpr bool StyleHasBorder (DWORD_PTR style)
   {
     return (  ( style == 0x0            ) ||
               ( style  &  WS_BORDER     ) ||
@@ -243,7 +240,7 @@ public:
               ( style  &  WS_DLGFRAME   )    );
   }
 
-  virtual bool OnVarChange (SK_IVariable* var, void* val)
+  virtual bool OnVarChange (SK_IVariable* var, void* val) override
   {
     if (var == confine_cursor_)
     {
@@ -368,11 +365,12 @@ public:
           {
             config.window.fullscreen = *static_cast <bool *> (val);
 
-            static bool first_set = true;
-            static RECT last_known_client;
-            static RECT last_known_window;
+            static bool first_set         = true;
+            static RECT last_known_client = { };
+            static RECT last_known_window = { };
 
-            RECT client;
+                   RECT client            = { };
+
             GetClientRect_Original (game_window.hWnd, &client);
 
             HMONITOR hMonitor =
@@ -402,11 +400,15 @@ public:
               config.window.res.override.y = last_known_client.bottom - last_known_client.top;
 
               // Trigger re-calc on adjust
-              game_window.game.client   = RECT { last_known_client.left,last_known_client.top,last_known_client.right,last_known_client.bottom };
-              game_window.game.window   = RECT { last_known_window.left,last_known_window.top,last_known_window.right,last_known_window.bottom };
+              game_window.game.client   = RECT { last_known_client.left,  last_known_client.top,
+                                                 last_known_client.right, last_known_client.bottom };
+              game_window.game.window   = RECT { last_known_window.left,  last_known_window.top,
+                                                 last_known_window.right, last_known_window.bottom };
 
-              game_window.actual.client = RECT { last_known_client.left,last_known_client.top,last_known_client.right,last_known_client.bottom };
-              game_window.actual.window = RECT { last_known_window.left,last_known_window.top,last_known_window.right,last_known_window.bottom };
+              game_window.actual.client = RECT { last_known_client.left,  last_known_client.top,
+                                                 last_known_client.right, last_known_client.bottom };
+              game_window.actual.window = RECT { last_known_window.left,  last_known_window.top,
+                                                 last_known_window.right, last_known_window.bottom };
 
               if (! config.window.unconfine_cursor)
               {
@@ -419,14 +421,16 @@ public:
                 ClipCursor_Original (nullptr);
             }
 
-            // Go Fullscreen (Stetch Window to Fill)
+            // Go Fullscreen (Stretch Window to Fill)
             else
             {
               config.window.res.override.x = mi.rcMonitor.right  - mi.rcMonitor.left;
               config.window.res.override.y = mi.rcMonitor.bottom - mi.rcMonitor.top;
 
-              game_window.actual.client = RECT { 0,0, mi.rcMonitor.right-mi.rcMonitor.left, mi.rcMonitor.bottom-mi.rcMonitor.top };
-              game_window.actual.window = RECT { mi.rcMonitor.left,mi.rcMonitor.top,mi.rcMonitor.right,mi.rcMonitor.bottom };
+              game_window.actual.client = RECT { 0,                                    0,
+                                                 mi.rcMonitor.right-mi.rcMonitor.left, mi.rcMonitor.bottom-mi.rcMonitor.top };
+              game_window.actual.window = RECT { mi.rcMonitor.left,  mi.rcMonitor.top,
+                                                 mi.rcMonitor.right, mi.rcMonitor.bottom };
             }
 
             SK_AdjustWindow ();
@@ -553,7 +557,7 @@ public:
       unsigned int x = 65535;
       unsigned int y = 65535;
 
-         char szTemp    [32] = { };
+         char szTemp    [31] = { };
 
       if (val != nullptr) {
         strncat (szTemp, *static_cast <char **> (val), 31);
@@ -567,16 +571,20 @@ public:
 
         SK_AdjustWindow ();
 
-        char *pszRes = *((SK_IVarStub <char *>*)var)->getValuePtr ();
-        snprintf (pszRes, 32, "%lux%lu", x, y);
+        auto *pszRes =
+          static_cast <char *> (((SK_IVarStub <char *> *)var)->getValuePointer ());
+
+        snprintf (pszRes, 31, "%ux%u", x, y);
 
         return true;
       }
 
       else
       {
-        char *pszRes = *((SK_IVarStub <char *>*)var)->getValuePtr ();
-        snprintf (pszRes, 32, "INVALID");
+        auto *pszRes =
+          static_cast <char *> (((SK_IVarStub <char *> *)var)->getValuePointer ());
+
+        snprintf (pszRes, 31, "INVALID");
 
         return false;
       }
@@ -607,25 +615,25 @@ public:
     );
 
     borderless_ =
-      SK_CreateVar (SK_IVariable::Boolean, &config.window.borderless, this);
+      SK_CreateVar (SK_IVariable::Boolean, &config.window.borderless,      this);
 
     background_mute_ =
       SK_CreateVar (SK_IVariable::Boolean, &config.window.background_mute, this);
 
     center_window_ =
-      SK_CreateVar (SK_IVariable::Boolean, &config.window.center, this);
+      SK_CreateVar (SK_IVariable::Boolean, &config.window.center,          this);
 
     fullscreen_ =
-      SK_CreateVar (SK_IVariable::Boolean, &config.window.fullscreen, this);
+      SK_CreateVar (SK_IVariable::Boolean, &config.window.fullscreen,      this);
 
     x_override_ =
-      SK_CreateVar (SK_IVariable::Int,     &config.window.res.override.x, this);
+      SK_CreateVar (SK_IVariable::Int,     &config.window.res.override.x,  this);
 
     y_override_ =
-      SK_CreateVar (SK_IVariable::Int,     &config.window.res.override.y, this);
+      SK_CreateVar (SK_IVariable::Int,     &config.window.res.override.y,  this);
 
     res_override_ =
-      SK_CreateVar (SK_IVariable::String,  override_res, this);
+      SK_CreateVar (SK_IVariable::String,  override_res,                   this);
 
     // Don't need to listen for this event, actually.
     fix_mouse_ =
@@ -638,10 +646,10 @@ public:
       SK_CreateVar (SK_IVariable::Int,     &config.window.offset.y.absolute, this);
 
     x_off_pct_ =
-      SK_CreateVar (SK_IVariable::Float,   &config.window.offset.x.percent, this);
+      SK_CreateVar (SK_IVariable::Float,   &config.window.offset.x.percent,  this);
 
     y_off_pct_ =
-      SK_CreateVar (SK_IVariable::Float,   &config.window.offset.y.percent, this);
+      SK_CreateVar (SK_IVariable::Float,   &config.window.offset.y.percent,  this);
 
     static_rects_ =
       SK_CreateVar (SK_IVariable::Boolean, &override_window_rects);
@@ -792,7 +800,7 @@ protected:
                                // This solves display scaling problems in Fallout 4 and
                                //   Skyrim...
 
-  char override_res [32];
+  char override_res [32] = { };
 
 private:
   static SK_WindowManager* pWindowManager;
@@ -1023,7 +1031,7 @@ SK_CenterWindowAtMouse (BOOL remember_pos)
       DWORD {
   EnterCriticalSection (&cs_center);
 
-  BOOL  remember_pos = (BOOL)(user != nullptr);
+  BOOL  remember_pos = (user != nullptr);
   POINT mouse        = { 0, 0 };
 
   if (GetCursorPos_Original != nullptr)
@@ -1154,10 +1162,26 @@ GetClientRect_Detour (
   SK_LOG_FIRST_CALL
 
   if ( config.window.borderless &&
-       hWnd == game_window.hWnd &&
-       override_window_rects )
+       hWnd == game_window.hWnd && config.window.fullscreen )
   {
-    *lpRect = game_window.game.client;
+    //lpRect->left = 0; lpRect->right  = config.window.res.override.x;
+    //lpRect->top  = 0; lpRect->bottom = config.window.res.override.y;
+
+    HMONITOR hMonitor =
+      MonitorFromWindow ( game_window.hWnd,
+                            MONITOR_DEFAULTTOPRIMARY );
+
+    MONITORINFO mi   = {         };
+    mi.cbSize        = sizeof (mi);
+    GetMonitorInfo (hMonitor, &mi);
+
+    lpRect->left  = 0;
+    lpRect->right = mi.rcMonitor.right - mi.rcMonitor.left;
+
+    lpRect->top    = 0;
+    lpRect->bottom = mi.rcMonitor.bottom - mi.rcMonitor.top;
+
+//    *lpRect = game_window.game.client;
 
     return TRUE;
   }
@@ -1178,9 +1202,26 @@ GetWindowRect_Detour (
 
   if ( config.window.borderless &&
        hWnd == game_window.hWnd && 
-       override_window_rects )
+       config.window.fullscreen )
   {
-    *lpRect = game_window.game.window;
+    //lpRect->left = 0; lpRect->right  = config.window.res.override.x;
+    //lpRect->top  = 0; lpRect->bottom = config.window.res.override.y;
+
+    HMONITOR hMonitor =
+      MonitorFromWindow ( game_window.hWnd,
+                            MONITOR_DEFAULTTOPRIMARY );
+
+    MONITORINFO mi   = {         };
+    mi.cbSize        = sizeof (mi);
+    GetMonitorInfo (hMonitor, &mi);
+
+    lpRect->left  = mi.rcMonitor.left;
+    lpRect->right = mi.rcMonitor.right;
+
+    lpRect->top    = mi.rcMonitor.top;
+    lpRect->bottom = mi.rcMonitor.bottom;
+
+    //*lpRect = game_window.game.window;
 
     return TRUE;
   }
@@ -1251,6 +1292,27 @@ AdjustWindowRect_Detour (
                       SK_SummarizeCaller ().c_str () ),
                 L"Window Mgr" );
 
+  // Override if forcing Fullscreen Borderless
+  //
+  if (config.window.fullscreen && config.window.borderless && (! bMenu))
+  {
+    HMONITOR hMonitor =
+      MonitorFromWindow ( game_window.hWnd,
+                            MONITOR_DEFAULTTONEAREST );
+
+    MONITORINFO mi   = {         };
+    mi.cbSize        = sizeof (mi);
+    GetMonitorInfo (hMonitor, &mi);
+
+    lpRect->left  = mi.rcMonitor.left;
+    lpRect->right = mi.rcMonitor.right;
+
+    lpRect->top    = mi.rcMonitor.top;
+    lpRect->bottom = mi.rcMonitor.bottom;
+
+    return TRUE;
+  }
+
   return AdjustWindowRect_Original (lpRect, dwStyle, bMenu);
 }
 
@@ -1270,12 +1332,33 @@ AdjustWindowRectEx_Detour (
 {
   SK_LOG1 ( ( L"AdjustWindowRectEx ( "
               L"{%4li,%4li / %4li,%4li}, 0x%04X, %li, 0x%04X ) - %s",
-                lpRect->left, lpRect->top,
+                lpRect->left,       lpRect->top,
                   lpRect->right, lpRect->bottom,
                     dwStyle, bMenu,
                       dwExStyle,
                         SK_SummarizeCaller ().c_str () ),
                L"Window Mgr" );
+
+  // Override if forcing Fullscreen Borderless
+  //
+  if (config.window.fullscreen && config.window.borderless && (! bMenu))
+  {
+    HMONITOR hMonitor =
+      MonitorFromWindow ( game_window.hWnd,
+                            MONITOR_DEFAULTTONEAREST );
+
+    MONITORINFO mi   = {         };
+    mi.cbSize        = sizeof (mi);
+    GetMonitorInfo (hMonitor, &mi);
+
+    lpRect->left  = mi.rcMonitor.left;
+    lpRect->right = mi.rcMonitor.right;
+
+    lpRect->top    = mi.rcMonitor.top;
+    lpRect->bottom = mi.rcMonitor.bottom;
+
+    return TRUE;
+  }
 
   return AdjustWindowRectEx_Original (lpRect, dwStyle, bMenu, dwExStyle);
 }
@@ -1649,7 +1732,8 @@ SK_SetWindowStyle (DWORD_PTR dwStyle_ptr)
   // Ensure that the border style is sane
   if (dwStyle_ptr == game_window.border_style)
   {
-    game_window.border_style |= WS_CAPTION | WS_SYSMENU | WS_POPUP | WS_MINIMIZEBOX | WS_VISIBLE;
+    game_window.border_style |= WS_CAPTION     | WS_SYSMENU | WS_POPUP |
+                                WS_MINIMIZEBOX | WS_VISIBLE;
     dwStyle_ptr               = game_window.border_style;
   }
 
@@ -1692,11 +1776,10 @@ SK_ComputeClientSize (void)
 
   if (use_override)
   {
-    return ( RECT { 0L, 0L,
-                      static_cast <LONG>   (config.window.res.override.x),
-                        static_cast <LONG> (config.window.res.override.y)
-                  }
-           );
+    return RECT { 0L, 0L,
+                    static_cast   <LONG> (config.window.res.override.x),
+                      static_cast <LONG> (config.window.res.override.y)
+                };
   }
 
   RECT ret =
@@ -1705,7 +1788,7 @@ SK_ComputeClientSize (void)
   GetClientRect_Original ( game_window.hWnd, &ret );
 
   ret = { 0, 0,
-            ret.right - ret.left,
+            ret.right    - ret.left,
               ret.bottom - ret.top };
 
   return ret;
@@ -1714,12 +1797,13 @@ SK_ComputeClientSize (void)
 POINT
 SK_ComputeClientOrigin (void)
 {
-  RECT window, client;
+  RECT window = { },
+       client = { };
 
   GetWindowRect_Original ( game_window.hWnd, &window );
   GetClientRect_Original ( game_window.hWnd, &client );
 
-  return POINT { window.left + client.left,
+  return POINT { window.left  + client.left,
                    window.top + client.top };
 }
 
@@ -1730,8 +1814,8 @@ SK_IsRectTooBigForDesktop (RECT wndRect)
     MonitorFromWindow ( game_window.hWnd,
                           MONITOR_DEFAULTTONEAREST );
 
-  MONITORINFO mi  = { };
-  mi.cbSize       = sizeof (mi);
+  MONITORINFO mi   = {         };
+  mi.cbSize        = sizeof (mi);
   GetMonitorInfo (hMonitor, &mi);
 
   int win_width      = wndRect.right       - wndRect.left;
@@ -1789,7 +1873,9 @@ SK_AdjustBorder (void)
       SK_BORDERLESS_EX :
         game_window.border_style_ex;
 
-  RECT orig_client;
+  RECT orig_client =
+    { };
+
   GetClientRect_Original (game_window.hWnd, &orig_client);
 
   RECT new_client =
@@ -1834,6 +1920,8 @@ SK_AdjustBorder (void)
 void
 SK_ResetWindow (void)
 {
+  return;
+
   static CRITICAL_SECTION cs_reset;
   static bool             init = false;
 
@@ -1896,8 +1984,8 @@ SK_AdjustWindow (void)
     MonitorFromWindow ( game_window.hWnd,
                           MONITOR_DEFAULTTONEAREST );
 
-  MONITORINFO mi  = { };
-  mi.cbSize       = sizeof (mi);
+  MONITORINFO mi   = {         };
+  mi.cbSize        = sizeof (mi);
   GetMonitorInfo (hMonitor, &mi);
 
   if (config.window.borderless && config.window.fullscreen)
@@ -1966,7 +2054,8 @@ SK_AdjustWindow (void)
       int  render_width_before  = game_window.game.client.right  - game_window.game.client.left;
       int  render_height_before = game_window.game.client.bottom - game_window.game.client.top;
 
-      RECT client_before = game_window.game.client;
+      RECT client_before = 
+        game_window.game.client;
 
       GetClientRect_Original (game_window.hWnd, &game_window.game.client);
       GetWindowRect_Original (game_window.hWnd, &game_window.game.window);
@@ -2314,8 +2403,50 @@ SK_GetSystemMetrics (_In_ int nIndex)
 
 
 
-typedef BOOL (WINAPI *TranslateMessage_pfn)(_In_ const MSG *lpMsg);
+using TranslateMessage_pfn =
+  BOOL (WINAPI *)(_In_ const MSG *lpMsg);
+
+using DispatchMessageW_pfn =
+  LRESULT (WINAPI *)(
+    _In_ const MSG *lpmsg
+  );
+
+using DispatchMessageA_pfn =
+  LRESULT (WINAPI *)(
+    _In_ const MSG *lpmsg
+  );
+
+using GetMessageA_pfn =
+  BOOL (WINAPI *)( LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax );
+using GetMessageW_pfn =
+  BOOL (WINAPI *)( LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax );
+
+using PeekMessageW_pfn =
+  BOOL (WINAPI *)(
+    _Out_    LPMSG lpMsg,
+    _In_opt_ HWND  hWnd,
+    _In_     UINT  wMsgFilterMin,
+    _In_     UINT  wMsgFilterMax,
+    _In_     UINT  wRemoveMsg
+  );
+
+using PeekMessageA_pfn =
+  BOOL (WINAPI *)(
+    _Out_    LPMSG lpMsg,
+    _In_opt_ HWND  hWnd,
+    _In_     UINT  wMsgFilterMin,
+    _In_     UINT  wMsgFilterMax,
+    _In_     UINT  wRemoveMsg
+  );
+
 TranslateMessage_pfn TranslateMessage_Original = nullptr;
+
+PeekMessageW_pfn     PeekMessageW_Original     = nullptr;
+PeekMessageA_pfn     PeekMessageA_Original     = nullptr;
+GetMessageA_pfn      GetMessageA_Original      = nullptr;
+GetMessageW_pfn      GetMessageW_Original      = nullptr;
+DispatchMessageW_pfn DispatchMessageW_Original = nullptr;
+DispatchMessageA_pfn DispatchMessageA_Original = nullptr;
 
 BOOL
 WINAPI
@@ -2332,6 +2463,7 @@ TranslateMessage_Detour (_In_ const MSG *lpMsg)
       // This shouldn't happen considering this function is supposed
       //   to generate this message, but better to be on the safe side.
       case WM_CHAR:
+      case WM_MENUCHAR:
       {
         return TRUE;
       } break;
@@ -2342,17 +2474,6 @@ TranslateMessage_Detour (_In_ const MSG *lpMsg)
 }
 
 LPMSG last_message = nullptr;
-
-typedef LRESULT (WINAPI *DispatchMessageW_pfn)(
-  _In_ const MSG *lpmsg
-);
-
-typedef LRESULT (WINAPI *DispatchMessageA_pfn)(
-  _In_ const MSG *lpmsg
-);
-
-DispatchMessageW_pfn DispatchMessageW_Original = nullptr;
-DispatchMessageA_pfn DispatchMessageA_Original = nullptr;
 
 bool
 SK_EarlyDispatchMessage (LPMSG lpMsg, bool remove, bool peek = false)
@@ -2368,16 +2489,6 @@ SK_EarlyDispatchMessage (LPMSG lpMsg, bool remove, bool peek = false)
   return false;
 }
 
-typedef BOOL (WINAPI *PeekMessageW_pfn)(
-  _Out_    LPMSG lpMsg,
-  _In_opt_ HWND  hWnd,
-  _In_     UINT  wMsgFilterMin,
-  _In_     UINT  wMsgFilterMax,
-  _In_     UINT  wRemoveMsg
-);
-
-PeekMessageW_pfn PeekMessageW_Original = nullptr;
-
 BOOL
 WINAPI
 PeekMessageW_Detour (
@@ -2387,39 +2498,55 @@ PeekMessageW_Detour (
   _In_     UINT  wMsgFilterMax,
   _In_     UINT  wRemoveMsg )
 {
+  if (SK_GetCallingDLL () == GetModuleHandle
+#ifdef _WIN64
+    (L"GameOverlayRenderer64.dll"))
+#else
+    (L"GameOverlayRenderer.dll"))
+#endif
+  {
+    return PeekMessageW_Original ( lpMsg, hWnd,
+                                   wMsgFilterMin,                           wMsgFilterMax,                          wRemoveMsg );
+  }
+
   SK_LOG_FIRST_CALL
 
-
-  if (config.render.dxgi.safe_fullscreen) wRemoveMsg |= PM_REMOVE;
-
+  if (config.render.dxgi.safe_fullscreen && (IsWindowUnicode (GetActiveWindow ())))
+    wRemoveMsg |= PM_REMOVE;
 
   MSG msg = { };
 
-  if (PeekMessageW_Original (&msg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg & ~PM_REMOVE))
+  if (PeekMessageW_Original (&msg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg))
   {
-    if (SK_EarlyDispatchMessage (&msg, true, true))
+    *lpMsg = msg;
+
+    // Avoid processing the message twice if it's marshalled because
+    //   stupid software called the wrong version of this function ;)
+    if (IsWindowUnicode (msg.hwnd))
     {
-      //*lpMsg = msg;
-  
-      PeekMessageW_Original (&msg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg | PM_REMOVE);
-  
-      return FALSE;
+      if (SK_EarlyDispatchMessage (&msg, true, true))
+      {
+        if (! (wRemoveMsg & PM_REMOVE))
+        {
+          PeekMessageW_Original ( &msg, lpMsg->hwnd, lpMsg->message,
+                                                     lpMsg->message, PM_REMOVE | PM_NOYIELD );
+        }
+
+        if (lpMsg->message == WM_INPUT)
+          DefWindowProcW (lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam);
+
+        lpMsg->message = WM_NULL;
+        lpMsg->pt.x    = 0; lpMsg->pt.y = 0;
+
+        return FALSE;
+      }
     }
+
+    return TRUE;
   }
 
-
-  return PeekMessageW_Original (lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg);
+  return FALSE;
 }
-
-typedef BOOL (WINAPI *PeekMessageA_pfn)(
-  _Out_    LPMSG lpMsg,
-  _In_opt_ HWND  hWnd,
-  _In_     UINT  wMsgFilterMin,
-  _In_     UINT  wMsgFilterMax,
-  _In_     UINT  wRemoveMsg
-);
-
-PeekMessageW_pfn PeekMessageA_Original = nullptr;
 
 BOOL
 WINAPI
@@ -2430,45 +2557,76 @@ PeekMessageA_Detour (
   _In_     UINT  wMsgFilterMax,
   _In_     UINT  wRemoveMsg )
 {
-  SK_LOG_FIRST_CALL
-
-
-  if (config.render.dxgi.safe_fullscreen) wRemoveMsg |= PM_REMOVE;
-
-
-  MSG msg = { };
-  if (PeekMessageA_Original (&msg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg & ~PM_REMOVE))
+  if (SK_GetCallingDLL () == GetModuleHandle
+#ifdef _WIN64
+    (L"GameOverlayRenderer64.dll"))
+#else
+    (L"GameOverlayRenderer.dll"))
+#endif
   {
-    if (SK_EarlyDispatchMessage (&msg, true, true))
-    {
-      //*lpMsg = msg;
-  
-      PeekMessageA_Original (&msg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg | PM_REMOVE);
-  
-      return FALSE;
-    }
+    return PeekMessageA_Original ( lpMsg, hWnd,
+                                   wMsgFilterMin,                           wMsgFilterMax,                          wRemoveMsg );
   }
 
+  SK_LOG_FIRST_CALL
 
-  return PeekMessageA_Original (lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg);
+  if (config.render.dxgi.safe_fullscreen && (! IsWindowUnicode (GetActiveWindow ())))
+    wRemoveMsg |= PM_REMOVE;
+
+  MSG msg = { };
+
+  if (PeekMessageA_Original (&msg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg))
+  {
+    *lpMsg = msg;
+
+    // Avoid processing the message twice if it's marshalled because
+    //   stupid software called the wrong version of this function ;)
+    if (! IsWindowUnicode (lpMsg->hwnd))
+    {
+      if (SK_EarlyDispatchMessage (&msg, true, true))
+      {
+        if (! (wRemoveMsg & PM_REMOVE))
+        {
+          PeekMessageA_Original ( &msg, lpMsg->hwnd, lpMsg->message,
+                                                     lpMsg->message, PM_REMOVE | PM_NOYIELD );
+        }
+
+        if (lpMsg->message == WM_INPUT)
+          DefWindowProcA (lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam);
+
+        lpMsg->message = WM_NULL;
+        lpMsg->pt.x    = 0; lpMsg->pt.y = 0;
+
+        return FALSE;
+      }
+    }
+
+    return TRUE;
+  }
+
+  return FALSE;
 }
-
-typedef BOOL (WINAPI *GetMessageA_pfn)(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax);
-typedef BOOL (WINAPI *GetMessageW_pfn)(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax);
-
-GetMessageA_pfn GetMessageA_Original;
-GetMessageW_pfn GetMessageW_Original;
 
 BOOL
 WINAPI
 GetMessageA_Detour (LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax)
 {
+  if (SK_GetCallingDLL () == GetModuleHandle
+#ifdef _WIN64
+    (L"GameOverlayRenderer64.dll"))
+#else
+    (L"GameOverlayRenderer.dll"))
+#endif
+  {
+    return GetMessageA_Original ( lpMsg, hWnd,                                       wMsgFilterMin,                                   wMsgFilterMax );
+  }
+
   SK_LOG_FIRST_CALL
 
   if (! GetMessageA_Original (lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax))
     return FALSE;
 
-  if (lpMsg->hwnd != HWND_DESKTOP)
+  if (lpMsg->hwnd == game_window.hWnd)
     SK_EarlyDispatchMessage (lpMsg, true);
 
   return TRUE;
@@ -2478,12 +2636,22 @@ BOOL
 WINAPI
 GetMessageW_Detour (LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax)
 {
+  if (SK_GetCallingDLL () == GetModuleHandle
+#ifdef _WIN64
+    (L"GameOverlayRenderer64.dll"))
+#else
+    (L"GameOverlayRenderer.dll"))
+#endif
+  {
+    return GetMessageW_Original ( lpMsg, hWnd,                                       wMsgFilterMin,                                   wMsgFilterMax );
+  }
+
   SK_LOG_FIRST_CALL
 
   if (! GetMessageW_Original (lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax))
     return FALSE;
 
-  if (lpMsg->hwnd != HWND_DESKTOP)
+  if (lpMsg->hwnd == game_window.hWnd)
     SK_EarlyDispatchMessage (lpMsg, true);
 
   return TRUE;
@@ -2493,15 +2661,25 @@ LRESULT
 WINAPI
 DispatchMessageW_Detour (_In_ const MSG *lpMsg)
 {
+  if (SK_GetCallingDLL () == GetModuleHandle
+#ifdef _WIN64
+    (L"GameOverlayRenderer64.dll"))
+#else
+    (L"GameOverlayRenderer.dll"))
+#endif
+  {
+    return DispatchMessageW_Original ( lpMsg );
+  }
+
   SK_LOG_FIRST_CALL
 
-  if (lpMsg->hwnd != HWND_DESKTOP)
+  if (lpMsg->hwnd == game_window.hWnd)
   {
     if ( SK_EarlyDispatchMessage ( const_cast <MSG *> (lpMsg),
                                      false )
        )
-    {  
-      return 0;
+    {
+      return DefWindowProcW (lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam);
     }
   }
 
@@ -2512,15 +2690,25 @@ LRESULT
 WINAPI
 DispatchMessageA_Detour (_In_ const MSG *lpMsg)
 {
+  if (SK_GetCallingDLL () == GetModuleHandle
+#ifdef _WIN64
+    (L"GameOverlayRenderer64.dll"))
+#else
+    (L"GameOverlayRenderer.dll"))
+#endif
+  {
+    return DispatchMessageA_Original ( lpMsg );
+  }
+
   SK_LOG_FIRST_CALL
 
-  if (lpMsg->hwnd != HWND_DESKTOP)
+  if (lpMsg->hwnd == game_window.hWnd)
   {
     if ( SK_EarlyDispatchMessage ( const_cast <MSG *> (lpMsg),
                                      false )
        )
     {
-      return 0;
+      return DefWindowProcA (lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam);
     }
   }
 
@@ -2529,11 +2717,11 @@ DispatchMessageA_Detour (_In_ const MSG *lpMsg)
 
 // Avoid static storage in the callback function
 struct {
-  POINTS pos      = { }; // POINT (Short) - Not POINT plural ;)
-  DWORD  sampled  = 0UL;
-  bool   cursor   = true;
+  POINTS pos      = {     }; // POINT (Short) - Not POINT plural ;)
+  DWORD  sampled  =     0UL;
+  bool   cursor   =    true;
 
-  int    init     = false;
+  int    init     =   false;
   UINT   timer_id = 0x68993;
 } last_mouse;
 
@@ -2634,7 +2822,7 @@ SK_DetourWindowProc ( _In_  HWND   hWnd,
 
   if (hWnd != game_window.hWnd)
   {
-    if (game_window.hWnd != 0)
+    if (game_window.hWnd != nullptr)
     {
       dll_log.Log ( L"[Window Mgr] New HWND detected in the window proc. used"
                     L" for rendering... (Old=%p, New=%p)",
@@ -2643,13 +2831,13 @@ SK_DetourWindowProc ( _In_  HWND   hWnd,
 
     game_window.hWnd = hWnd;
 
-    game_window.active        = true;
-    game_window.game.style    = game_window.GetWindowLongPtr (game_window.hWnd, GWL_STYLE);
-    game_window.actual.style  = game_window.GetWindowLongPtr (game_window.hWnd, GWL_STYLE);
-    game_window.unicode       = IsWindowUnicode (game_window.hWnd) != FALSE;
+    game_window.active       = true;
+    game_window.game.style   = game_window.GetWindowLongPtr (game_window.hWnd, GWL_STYLE);
+    game_window.actual.style = game_window.GetWindowLongPtr (game_window.hWnd, GWL_STYLE);
+    game_window.unicode      =              IsWindowUnicode (game_window.hWnd)   != FALSE;
 
-    GetWindowRect_Original (game_window.hWnd, &game_window.game.window);
-    GetClientRect_Original (game_window.hWnd, &game_window.game.client);
+    GetWindowRect_Original (game_window.hWnd, &game_window.game.window  );
+    GetClientRect_Original (game_window.hWnd, &game_window.game.client  );
     GetWindowRect_Original (game_window.hWnd, &game_window.actual.window);
     GetClientRect_Original (game_window.hWnd, &game_window.actual.client);
 
@@ -2706,9 +2894,8 @@ SK_DetourWindowProc ( _In_  HWND   hWnd,
        return (last_mouse.cursor != was_active);
      };
 
-   auto DeactivateCursor = []()->
-    bool
-     {
+   auto DeactivateCursor = 
+   []{
        if (! last_mouse.cursor)
          return false;
 
@@ -2787,7 +2974,7 @@ SK_DetourWindowProc ( _In_  HWND   hWnd,
   }
 
 
-  auto ActivateWindow = [&](bool active = false)
+  auto ActivateWindow =[&](bool active = false)
   {
     bool state_changed =
       (game_window.active != active);
@@ -3037,7 +3224,7 @@ SK_DetourWindowProc ( _In_  HWND   hWnd,
 
     case WM_WINDOWPOSCHANGING:
     {
-      LPWINDOWPOS wnd_pos =
+      auto wnd_pos =
         reinterpret_cast <LPWINDOWPOS> (lParam);
 
       if (wnd_pos->flags ^ SWP_NOMOVE)
@@ -3074,7 +3261,7 @@ SK_DetourWindowProc ( _In_  HWND   hWnd,
       // Unconditionally doing this tends to anger Obduction :)
       //ImGui_ImplDX11_InvalidateDeviceObjects ();
 
-      LPWINDOWPOS wnd_pos =
+      auto wnd_pos =
         reinterpret_cast <LPWINDOWPOS> (lParam);
 
       GetWindowRect_Original (game_window.hWnd, &game_window.actual.window);
@@ -3102,9 +3289,9 @@ SK_DetourWindowProc ( _In_  HWND   hWnd,
         // Prevent all of this craziness from resizing the window accidentally
         if (config.window.res.override.isZero ())
         {
-          temp_override = true;
+               temp_override = true;
+          RECT client        = {  };
 
-          RECT client;
           GetClientRect_Original (game_window.hWnd, &client);
 
           config.window.res.override.x = client.right  - client.left;
@@ -3135,7 +3322,7 @@ SK_DetourWindowProc ( _In_  HWND   hWnd,
 
       // Filter this message
       if (config.window.borderless && config.window.fullscreen)
-        return 0;
+        return 1;
     } break;
 
 
@@ -3207,14 +3394,14 @@ SK_DetourWindowProc ( _In_  HWND   hWnd,
       break;
   }
 
-
-  bool handled = false;
-
-  static bool eqgame = wcsstr (SK_GetHostApp (), L"eqgame.exe");
+         bool handled = false;
+  static bool eqgame  =
+    wcsstr (SK_GetHostApp (), L"eqgame.exe");
 
   if (eqgame)
   {
-    handled = ImGui_WndProcHandler (hWnd, uMsg, wParam, lParam);
+    handled =
+      ImGui_WndProcHandler (hWnd, uMsg, wParam, lParam);
   }
 
 
@@ -3274,13 +3461,13 @@ SK_DetourWindowProc ( _In_  HWND   hWnd,
   //
   //   [ Mostly for EverQuest ]
   //
-  if (uMsg >= WM_MOUSEFIRST && uMsg <= WM_MOUSELAST && SK_ImGui_WantMouseCapture ())
+  if (uMsg >= WM_MOUSEFIRST && uMsg <= WM_MOUSELAST && SK_ImGui_WantMouseCapture    ())
     return game_window.DefWindowProc (hWnd, uMsg, wParam, lParam);
 
-  if (uMsg >= WM_KEYFIRST && uMsg <= WM_KEYLAST && SK_ImGui_WantKeyboardCapture ())
+  if (uMsg >= WM_KEYFIRST   && uMsg <= WM_KEYLAST   && SK_ImGui_WantKeyboardCapture ())
     return game_window.DefWindowProc (hWnd, uMsg, wParam, lParam);
 
-  if (uMsg == WM_INPUT && SK_ImGui_WantGamepadCapture ())
+  if (uMsg == WM_INPUT      && SK_ImGui_WantGamepadCapture ())
     return game_window.DefWindowProc (hWnd, uMsg, wParam, lParam);
 
 
@@ -3296,11 +3483,11 @@ SK_DetourWindowProc ( _In_  HWND   hWnd,
       if (uMsg >= WM_MOUSEFIRST && uMsg <= WM_MOUSELAST)
         return game_window.DefWindowProc (hWnd, uMsg, wParam, lParam);
 
-      if (uMsg >= WM_KEYFIRST && uMsg <= WM_KEYLAST)
+      if (uMsg >= WM_KEYFIRST   && uMsg <= WM_KEYLAST)
         return game_window.DefWindowProc (hWnd, uMsg, wParam, lParam);
 
       // Block RAW Input
-      if (console_visible && uMsg == WM_INPUT)
+      if (uMsg == WM_INPUT)
         return game_window.DefWindowProc (hWnd, uMsg, wParam, lParam);
     }
   }
@@ -3310,7 +3497,25 @@ SK_DetourWindowProc ( _In_  HWND   hWnd,
   }
 
 
-  return SK_COMPAT_SafeCallProc (&game_window, hWnd, uMsg, wParam, lParam);
+  // Filter this out for fullscreen override safety
+  ////if (uMsg == WM_DISPLAYCHANGE)    return 1;//game_window.DefWindowProc (hWnd, uMsg, wParam, lParam);
+  ////if (uMsg == WM_WINDOWPOSCHANGED) return game_window.DefWindowProc (hWnd, uMsg, wParam, lParam);
+
+
+  LRESULT lRet =
+    SK_COMPAT_SafeCallProc (&game_window, hWnd, uMsg, wParam, lParam);
+
+
+  // Post-Process the game's result to fix any non-compliant behaviors
+  //
+
+
+  // Fix for Skyrim SE beeping when Alt is pressed.
+  if (uMsg == WM_MENUCHAR && (! HIWORD (lRet)))
+    return MAKEWPARAM (0, MNC_CLOSE);
+
+
+  return lRet;
 }
 
 #include <SpecialK/core.h>
@@ -3329,7 +3534,7 @@ SK_InitWindow (HWND hWnd, bool fullscreen_exclusive)
   GetWindowRect_Original (hWnd, &game_window.actual.window);
   GetClientRect_Original (hWnd, &game_window.actual.client);
 
-  GetCursorPos_Original  (&game_window.cursor_pos);
+  GetCursorPos_Original  (      &game_window.cursor_pos);
 
   if (game_window.GetWindowLongPtr == nullptr)
     return;
@@ -3382,7 +3587,8 @@ SK_InstallWindowHook (HWND hWnd)
 #ifdef _WIN64
     game_window.GetWindowLongPtr = GetWindowLongPtrW_Original;
 #else
-    game_window.GetWindowLongPtr = static_cast <GetWindowLongPtr_pfn> (GetWindowLongW_Original);
+    game_window.GetWindowLongPtr =
+      static_cast <GetWindowLongPtr_pfn> (GetWindowLongW_Original);
 #endif
     game_window.SetWindowLongPtr = SetWindowLongPtrW_Original;
     game_window.DefWindowProc    = (DefWindowProc_pfn)
@@ -3398,7 +3604,8 @@ SK_InstallWindowHook (HWND hWnd)
 #ifdef _WIN64
     game_window.GetWindowLongPtr = GetWindowLongPtrW_Original;
 #else
-    game_window.GetWindowLongPtr = static_cast <GetWindowLongPtr_pfn> (GetWindowLongA_Original);
+    game_window.GetWindowLongPtr =
+      static_cast <GetWindowLongPtr_pfn> (GetWindowLongA_Original);
 #endif
     game_window.SetWindowLongPtr = SetWindowLongPtrA_Original;
     game_window.DefWindowProc    = reinterpret_cast <DefWindowProc_pfn>
@@ -3413,11 +3620,12 @@ SK_InstallWindowHook (HWND hWnd)
 
   WNDPROC class_proc = game_window.unicode ? (WNDPROC)
     GetClassLongPtrW  ( hWnd, GCLP_WNDPROC ) :
-                                 (WNDPROC)
+                                             (WNDPROC)
     GetClassLongPtrA  ( hWnd, GCLP_WNDPROC );
 
-  WNDPROC wnd_proc = (WNDPROC)
-    game_window.GetWindowLongPtr ( hWnd, GWLP_WNDPROC );
+  auto wnd_proc = reinterpret_cast <WNDPROC> (
+    game_window.GetWindowLongPtr ( hWnd, GWLP_WNDPROC )
+  );
 
 
   // When ImGui is active, we will do character translation internally
@@ -3427,18 +3635,18 @@ SK_InstallWindowHook (HWND hWnd)
   SK_CreateDLLHook2 (       L"user32.dll",
                              "TranslateMessage",
                               TranslateMessage_Detour,
-reinterpret_cast <LPVOID *> (&TranslateMessage_Original) );
+     static_cast_p2p <void> (&TranslateMessage_Original) );
 
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "PeekMessageW",
                               PeekMessageW_Detour,
-reinterpret_cast <LPVOID *> (&PeekMessageW_Original) );
+     static_cast_p2p <void> (&PeekMessageW_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "PeekMessageA",
                               PeekMessageA_Detour,
-reinterpret_cast <LPVOID *> (&PeekMessageA_Original) );
+     static_cast_p2p <void> (&PeekMessageA_Original) );
 
 
   // Hook as few of these as possible, disrupting the message pump
@@ -3450,22 +3658,22 @@ reinterpret_cast <LPVOID *> (&PeekMessageA_Original) );
   SK_CreateDLLHook2 (       L"user32.dll",
                              "GetMessageW",
                               GetMessageW_Detour,
-reinterpret_cast <LPVOID *> (&GetMessageW_Original) );
+     static_cast_p2p <void> (&GetMessageW_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "DispatchMessageW",
                               DispatchMessageW_Detour,
-reinterpret_cast <LPVOID *> (&DispatchMessageW_Original) );
+     static_cast_p2p <void> (&DispatchMessageW_Original) );
   
   SK_CreateDLLHook2 (       L"user32.dll",
                              "GetMessageA",
                               GetMessageA_Detour,
-reinterpret_cast <LPVOID *> (&GetMessageA_Original) );
+     static_cast_p2p <void> (&GetMessageA_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "DispatchMessageA",
                               DispatchMessageA_Detour,
-reinterpret_cast <LPVOID *> (&DispatchMessageA_Original) );
+     static_cast_p2p <void> (&DispatchMessageA_Original) );
 
   game_window.WndProc_Original = nullptr;
 
@@ -3497,13 +3705,13 @@ reinterpret_cast <LPVOID *> (&DispatchMessageA_Original) );
   {
     if ( MH_OK ==
            MH_CreateHook (
-             reinterpret_cast <LPVOID>   (class_proc),
+                                                   class_proc,
                                           SK_DetourWindowProc,
-             reinterpret_cast <LPVOID *> (&game_window.WndProc_Original)
+                 static_cast_p2p <void> (&game_window.WndProc_Original)
            )
       )
     {
-      MH_QueueEnableHook (static_cast <LPVOID> (class_proc));
+      MH_QueueEnableHook (class_proc);
 
       dll_log.Log (L"[Window Mgr]  >> Hooked ClassProc.");
 
@@ -3512,13 +3720,13 @@ reinterpret_cast <LPVOID *> (&DispatchMessageA_Original) );
 
     else if ( MH_OK ==
                 MH_CreateHook (
-                  reinterpret_cast <LPVOID>   (wnd_proc),
-                                                SK_DetourWindowProc,
-                  reinterpret_cast <LPVOID *> (&game_window.WndProc_Original)
+                                                      wnd_proc,
+                                           SK_DetourWindowProc,
+                  static_cast_p2p <void> (&game_window.WndProc_Original)
                 )
             )
     {
-      MH_QueueEnableHook (reinterpret_cast <LPVOID> (wnd_proc));
+      MH_QueueEnableHook (wnd_proc);
 
       dll_log.Log (L"[Window Mgr]  >> Hooked WndProc.");
 
@@ -3557,9 +3765,12 @@ reinterpret_cast <LPVOID *> (&DispatchMessageA_Original) );
 
   if (count > 0)
   {
-    RAWINPUTDEVICE* pDevs = new RAWINPUTDEVICE [count + 1];
+    auto* pDevs =
+      new RAWINPUTDEVICE [count + 1];
 
-    GetRegisteredRawInputDevices_Original (pDevs, &count, sizeof RAWINPUTDEVICE);
+    GetRegisteredRawInputDevices_Original ( pDevs,
+                                              &count,
+                                                sizeof RAWINPUTDEVICE );
 
     for (UINT i = 0 ; i < count ; i++)
     {
@@ -3588,7 +3799,8 @@ reinterpret_cast <LPVOID *> (&DispatchMessageA_Original) );
     rid.hwndTarget  = hWnd;
     rid.usUsage     = HID_USAGE_GENERIC_MOUSE;
     rid.usUsagePage = HID_USAGE_PAGE_GENERIC;
-    rid.dwFlags     = RIDEV_INPUTSINK | RIDEV_DEVNOTIFY;
+    rid.dwFlags     = RIDEV_INPUTSINK |
+                      RIDEV_DEVNOTIFY;
   
     RegisterRawInputDevices_Original (&rid, 1, sizeof RAWINPUTDEVICE);
   }
@@ -3647,17 +3859,17 @@ SK_HookWinAPI (void)
   SK_CreateDLLHook2 (       L"user32.dll",
                              "SetWindowPos",
                               SetWindowPos_Detour,
-reinterpret_cast <LPVOID *> (&SetWindowPos_Original) );
+     static_cast_p2p <void> (&SetWindowPos_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "SetWindowPlacement",
                               SetWindowPlacement_Detour,
-reinterpret_cast <LPVOID *> (&SetWindowPlacement_Original) );
+     static_cast_p2p <void> (&SetWindowPlacement_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "MoveWindow",
                               MoveWindow_Detour,
-reinterpret_cast <LPVOID *> (&MoveWindow_Original) );
+     static_cast_p2p <void> (&MoveWindow_Original) );
 #else
     SetWindowPos_Original =
       (SetWindowPos_pfn)
@@ -3678,89 +3890,92 @@ reinterpret_cast <LPVOID *> (&MoveWindow_Original) );
   SK_CreateDLLHook2 (       L"user32.dll",
                              "ClipCursor",
                               ClipCursor_Detour,
-reinterpret_cast <LPVOID *> (&ClipCursor_Original) );
+     static_cast_p2p <void> (&ClipCursor_Original) );
 
 // These functions are dispatched through the Ptr version, so
 //   hooking them in the 64-bit version would be a bad idea.
   SK_CreateDLLHook2 (       L"user32.dll",
                              "SetWindowLongA",
                               SetWindowLongA_Detour,
-reinterpret_cast <LPVOID *> (&SetWindowLongA_Original) );
+     static_cast_p2p <void> (&SetWindowLongA_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "SetWindowLongW",
                               SetWindowLongW_Detour,
-reinterpret_cast <LPVOID *> (&SetWindowLongW_Original) );
+     static_cast_p2p <void> (&SetWindowLongW_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "GetWindowLongA",
                               GetWindowLongA_Detour,
-reinterpret_cast <LPVOID *> (&GetWindowLongA_Original) );
+     static_cast_p2p <void> (&GetWindowLongA_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "GetWindowLongW",
                               GetWindowLongW_Detour,
-reinterpret_cast <LPVOID *> (&GetWindowLongW_Original) );
+     static_cast_p2p <void> (&GetWindowLongW_Original) );
 
 #ifdef _WIN64
   SK_CreateDLLHook2 (       L"user32.dll",
                              "SetWindowLongPtrA",
                               SetWindowLongPtrA_Detour,
-reinterpret_cast <LPVOID *> (&SetWindowLongPtrA_Original) );
+     static_cast_p2p <void> (&SetWindowLongPtrA_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "SetWindowLongPtrW",
                               SetWindowLongPtrW_Detour,
-reinterpret_cast <LPVOID *> (&SetWindowLongPtrW_Original) );
+     static_cast_p2p <void> (&SetWindowLongPtrW_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "GetWindowLongPtrA",
                               GetWindowLongPtrA_Detour,
-reinterpret_cast <LPVOID *> (&GetWindowLongPtrA_Original) );
+     static_cast_p2p <void> (&GetWindowLongPtrA_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "GetWindowLongPtrW",
                               GetWindowLongPtrW_Detour,
-reinterpret_cast <LPVOID *> (&GetWindowLongPtrW_Original) );
+     static_cast_p2p <void> (&GetWindowLongPtrW_Original) );
 #endif
 
 #if 0
   SK_CreateDLLHook2 (         L"user32.dll",
                              "GetWindowRect",
                               GetWindowRect_Detour,
-reinterpret_cast <LPVOID *> (&GetWindowRect_Original) );
-
-  SK_CreateDLLHook2 (       L"user32.dll",
-                             "GetClientRect",
-                              GetClientRect_Detour,
-reinterpret_cast <LPVOID *> (&GetClientRect_Original) );
+     static_cast_p2p <void> (&GetWindowRect_Original) );
 #else
     GetWindowRect_Original =
       reinterpret_cast <GetWindowRect_pfn> (
         GetProcAddress ( GetModuleHandleW (L"user32.dll"), 
                                             "GetWindowRect" )
       );
+#endif
 
+#if 0
+  SK_CreateDLLHook2 (       L"user32.dll",
+                             "GetClientRect",
+                              GetClientRect_Detour,
+     static_cast_p2p <void> (&GetClientRect_Original) );
+#else
     GetClientRect_Original =
       reinterpret_cast <GetClientRect_pfn> (
         GetProcAddress ( GetModuleHandleW (L"user32.dll"), 
                                             "GetClientRect" )
       );
 #endif
+
   SK_CreateDLLHook2 (       L"user32.dll",
                              "AdjustWindowRect",
                               AdjustWindowRect_Detour,
-reinterpret_cast <LPVOID *> (&AdjustWindowRect_Original) );
+     static_cast_p2p <void> (&AdjustWindowRect_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "AdjustWindowRectEx",
                               AdjustWindowRectEx_Detour,
-reinterpret_cast <LPVOID *> (&AdjustWindowRectEx_Original) );
+     static_cast_p2p <void> (&AdjustWindowRectEx_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "GetSystemMetrics",
                               GetSystemMetrics_Detour,
-reinterpret_cast <LPVOID *> (&GetSystemMetrics_Original) );
+     static_cast_p2p <void> (&GetSystemMetrics_Original) );
 
   SK_ApplyQueuedHooks ();
 
@@ -3769,6 +3984,84 @@ reinterpret_cast <LPVOID *> (&GetSystemMetrics_Original) );
   SetWindowLongPtrW_Original = SetWindowLongW_Original;
 #else
 #endif
+}
+
+
+bool
+sk_window_s::needsCoordTransform (void)
+{
+  if (! config.window.res.override.fix_mouse)
+    return false;
+
+  bool dynamic_window =
+    (config.window.borderless /*&& config.window.fullscreen*/);
+
+  if (! dynamic_window)
+    return false;
+
+  return (! coord_remap.identical);
+}
+
+void
+sk_window_s::updateDims (void)
+{
+  if (config.window.borderless && config.window.fullscreen)
+  {
+    HMONITOR hMonitor =
+    MonitorFromWindow ( hWnd,
+                          MONITOR_DEFAULTTONEAREST );
+
+    MONITORINFO mi = { 0 };
+    mi.cbSize      = sizeof (mi);
+
+    GetMonitorInfo (hMonitor, &mi);
+
+    actual.window = mi.rcMonitor;
+
+    actual.client.left   = 0;
+    actual.client.right  = actual.window.right - actual.window.left;
+    actual.client.top    = 0;
+    actual.client.bottom = actual.window.bottom - actual.window.top;
+  }
+
+  long game_width   = (game.client.right   - game.client.left);
+  long window_width = (actual.client.right - actual.client.left);
+
+  long game_height   = (game.client.bottom   - game.client.top);
+  long window_height = (actual.client.bottom - actual.client.top);
+
+  bool resized =
+    (game_width != window_width || game_height != window_height);
+
+  bool moved =
+    ( game.window.left != actual.window.left ||
+      game.window.top  != actual.window.top );
+
+  if (resized || moved) {
+    coord_remap.identical = false;
+
+    coord_remap.scale.x =
+      (float)window_width  / (float)game_width;
+    coord_remap.scale.y =
+      (float)window_height / (float)game_height;
+
+    coord_remap.offset.x =
+      (float)(actual.window.left + actual.client.left) -
+      (float)(game.window.left   + game.client.left);
+    coord_remap.offset.y =
+      (float)(actual.window.top + actual.client.top) -
+      (float)(game.window.top   + game.client.top);
+  }
+
+  else {
+    coord_remap.identical = true;
+
+    coord_remap.offset.x  = 0.0f;
+    coord_remap.offset.y  = 0.0f;
+
+    coord_remap.scale.x   = 0.0f;
+    coord_remap.scale.y   = 0.0f;
+  }
 }
 
 

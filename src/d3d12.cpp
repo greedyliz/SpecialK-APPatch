@@ -19,9 +19,6 @@
  *
 **/
 
-#define _CRT_SECURE_NO_WARNINGS
-#define NOMINMAX
-
 #include <SpecialK/core.h>
 #include <SpecialK/hooks.h>
 #include <SpecialK/command.h>
@@ -43,7 +40,6 @@ extern LARGE_INTEGER SK_QueryPerf (void);
 #include <algorithm>
 
 LPVOID                pfnD3D12CreateDevice     = nullptr;
-volatile
 D3D12CreateDevice_pfn D3D12CreateDevice_Import = nullptr;
 
 HMODULE               SK::DXGI::hModD3D12      = nullptr;

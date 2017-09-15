@@ -22,10 +22,9 @@
 #ifndef __SK__OSD_TEXT_H__
 #define __SK__OSD_TEXT_H__
 
-#define _CRT_SECURE_NO_WARNINGS
 #include <Windows.h>
 #include <stdint.h>
-
+#include <string>
 #include <SpecialK/command.h>
 
 LPVOID __stdcall SK_GetSharedMemory     (void);
@@ -146,7 +145,7 @@ private:
   SK_IVariable*                            scale_ = nullptr;
 
 public:
-  virtual bool OnVarChange (SK_IVariable* var, void* val = NULL);
+  virtual bool OnVarChange (SK_IVariable* var, void* val = nullptr) override;
 };
 
 #endif /* __SK__OSD_TEXT_H__ */

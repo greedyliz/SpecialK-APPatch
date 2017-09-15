@@ -19,10 +19,6 @@
  *
 **/
 
-#define _CRT_NON_CONFORMING_SWPRINTFS
-#define _CRT_SECURE_NO_WARNINGS 
-#define NOMINMAX
-
 #include <d3d11.h>
 
 #include <SpecialK/nvapi.h>
@@ -41,9 +37,7 @@
 #include <SpecialK/utility.h>
 
 //
-// Undocumented Functions
-//
-//  ** (I am not breaking any NDA; I found these the hard way!)
+// Undocumented Functions (unless you sign an NDA)
 //
 NvAPI_GPU_GetRamType_pfn            NvAPI_GPU_GetRamType;
 NvAPI_GPU_GetFBWidthAndLocation_pfn NvAPI_GPU_GetFBWidthAndLocation;
@@ -54,6 +48,7 @@ NvAPI_GetGPUIDFromPhysicalGPU_pfn   NvAPI_GetGPUIDFromPhysicalGPU;
 using namespace sk;
 using namespace sk::NVAPI;
 
+// Not thread-safe; doesn't much matter.
 static bool nvapi_silent = false;
 
 #define NVAPI_SILENT()  { nvapi_silent = true;  }
@@ -97,8 +92,7 @@ NVAPI::ErrorMessage (_NvAPI_Status err,
                      UINT          line_no,
                      const char*   function_name,
                      const char*   file_name)
-{
-  char szError [256];
+{ char szError [256];
 
   NvAPI_GetErrorMessage (err, szError);
 
@@ -239,9 +233,8 @@ sk::NVAPI::EnumGPUs_DXGI (void)
 
   for (int i = 0; i < CountPhysicalGPUs (); i++)
   {
-    DXGI_ADAPTER_DESC adapterDesc;
-
-    NvAPI_ShortString name;
+    DXGI_ADAPTER_DESC adapterDesc = { };
+    NvAPI_ShortString name        = { };
 
     int   sli_group = 0;
     int   sli_size  = 0;
@@ -254,7 +247,7 @@ sk::NVAPI::EnumGPUs_DXGI (void)
     NVAPI_CALL (GetLogicalGPUFromPhysicalGPU  (_nv_dxgi_gpus [i], &logical));
     NVAPI_CALL (GetPhysicalGPUsFromLogicalGPU (logical, phys, &phys_count));
 
-    sli_group = (size_t)logical & 0xffffffff;
+    sli_group = reinterpret_cast <size_t> (logical) & 0xffffffff;
     sli_size  = phys_count;
 
     NVAPI_CALL (GPU_GetFullName (_nv_dxgi_gpus [i], name));
@@ -275,11 +268,11 @@ sk::NVAPI::EnumGPUs_DXGI (void)
     // NVIDIA's driver measures these numbers in KiB (to store as a 32-bit int)
     //  * We want the numbers in bytes (64-bit)
     adapterDesc.DedicatedVideoMemory  =
-      (size_t)meminfo.dedicatedVideoMemory << 10;
+      static_cast <size_t> (meminfo.dedicatedVideoMemory) << 10;
     adapterDesc.DedicatedSystemMemory =
-      (size_t)meminfo.systemVideoMemory    << 10;
+      static_cast <size_t> (meminfo.systemVideoMemory)    << 10;
     adapterDesc.SharedSystemMemory    = 
-      (size_t)meminfo.sharedSystemMemory   << 10;
+      static_cast <size_t> (meminfo.sharedSystemMemory)   << 10;
 
     _nv_dxgi_adapters [i] = adapterDesc;
   }
@@ -316,7 +309,8 @@ NVAPI::FindGPUByDXGIName (const wchar_t* wszName)
                                     // -----
                                     // What the heck?!
 
-    if (wcsstr (adapters->Description, wszFixedName) != NULL) {
+    if (wcsstr (adapters->Description, wszFixedName) != nullptr)
+    {
       delete [] wszFixedName;
       return adapters;
     }
@@ -326,14 +320,14 @@ NVAPI::FindGPUByDXGIName (const wchar_t* wszName)
 
   delete [] wszFixedName;
 
-  return NULL;
+  return nullptr;
 }
 
 std::wstring
 NVAPI::GetDriverVersion (NvU32* pVer)
 {
-  NvU32             ver;
-  NvAPI_ShortString ver_str;             // ANSI
+  NvU32             ver           =  0;
+  NvAPI_ShortString ver_str       = { }; // ANSI
   wchar_t           ver_wstr [64] = { }; // Unicode
 
   NvAPI_SYS_GetDriverAndBranchVersion (&ver, ver_str);
@@ -344,7 +338,7 @@ NVAPI::GetDriverVersion (NvU32* pVer)
   _snwprintf (ver_wstr, 63, L"%u.%u", ver / 100, ver % 100);
   ver_wstr [63] = L'\0';
 
-  if (pVer != NULL)
+  if (pVer != nullptr)
     *pVer = ver;
 
   return ver_wstr;
@@ -428,22 +422,25 @@ NVAPI::InitializeLibrary (const wchar_t* wszAppName)
       GetModuleHandleEx (GET_MODULE_HANDLE_EX_FLAG_PIN, L"nvapi.dll",   &hLib);
 #endif
 
-    if (hLib != nullptr) {
-      typedef void* (*NvAPI_QueryInterface_pfn)(unsigned int ordinal);
+    if (hLib != nullptr)
+    {
+      using NvAPI_QueryInterface_pfn = void* (*)(unsigned int ordinal);
 
-      static NvAPI_QueryInterface_pfn NvAPI_QueryInterface =
-        (NvAPI_QueryInterface_pfn)GetProcAddress (hLib, "nvapi_QueryInterface");
+      static auto NvAPI_QueryInterface =
+        reinterpret_cast <NvAPI_QueryInterface_pfn> (
+          GetProcAddress (hLib, "nvapi_QueryInterface")
+        );
 
       NvAPI_GPU_GetRamType =
-        (NvAPI_GPU_GetRamType_pfn)NvAPI_QueryInterface (0x57F7CAAC);
+        (NvAPI_GPU_GetRamType_pfn)NvAPI_QueryInterface            (0x57F7CAACu);
       NvAPI_GPU_GetFBWidthAndLocation =
-        (NvAPI_GPU_GetFBWidthAndLocation_pfn)NvAPI_QueryInterface (0x11104158);
+        (NvAPI_GPU_GetFBWidthAndLocation_pfn)NvAPI_QueryInterface (0x11104158u);
       NvAPI_GPU_GetPCIEInfo =
-        (NvAPI_GPU_GetPCIEInfo_pfn)NvAPI_QueryInterface (0xE3795199UL);
+        (NvAPI_GPU_GetPCIEInfo_pfn)NvAPI_QueryInterface           (0xE3795199u);
       NvAPI_GetPhysicalGPUFromGPUID =
-        (NvAPI_GetPhysicalGPUFromGPUID_pfn)NvAPI_QueryInterface (0x5380AD1A);
+        (NvAPI_GetPhysicalGPUFromGPUID_pfn)NvAPI_QueryInterface   (0x5380AD1Au);
       NvAPI_GetGPUIDFromPhysicalGPU =
-        (NvAPI_GetGPUIDFromPhysicalGPU_pfn)NvAPI_QueryInterface (0x6533EA3E);
+        (NvAPI_GetGPUIDFromPhysicalGPU_pfn)NvAPI_QueryInterface   (0x6533EA3Eu);
 
       if (NvAPI_GPU_GetRamType == nullptr) {
         dll_log.LogEx (false, L"missing NvAPI_GPU_GetRamType ");
@@ -488,8 +485,8 @@ NVAPI::InitializeLibrary (const wchar_t* wszAppName)
 NV_GET_CURRENT_SLI_STATE
 NVAPI::GetSLIState (IUnknown* pDev)
 {
-  NV_GET_CURRENT_SLI_STATE state;
-  state.version = NV_GET_CURRENT_SLI_STATE_VER;
+  NV_GET_CURRENT_SLI_STATE state = {                          };
+  state.version                  = NV_GET_CURRENT_SLI_STATE_VER;
 
   NvAPI_D3D_GetCurrentSLIState (pDev, &state);
 
@@ -539,11 +536,12 @@ SK_NvAPI_SetAntiAliasingOverride ( const wchar_t** pwszPropertyList )
   NvU32 compat_bits = 0xFFFFFFFF;
 
   struct property_pair_s {
-    const wchar_t* wszName;
-    const wchar_t* wszValue;
+    const wchar_t* wszName  = nullptr;
+    const wchar_t* wszValue = nullptr;
   } prop;
 
-  const wchar_t** pwszPropertyListEntry = pwszPropertyList;
+  const wchar_t** pwszPropertyListEntry =
+    pwszPropertyList;
 
   prop.wszName  = *(pwszPropertyListEntry++);
   prop.wszValue = *(pwszPropertyListEntry++);
@@ -759,7 +757,7 @@ SK_NvAPI_SetAntiAliasingOverride ( const wchar_t** pwszPropertyList )
     if (ret == NVAPI_INVALID_USER_PRIVILEGE)
     {
       int result = 
-        MessageBox ( NULL,
+        MessageBox ( nullptr,
                        L"Please run this game as Administrator to install Anti-Aliasing "
                        L"compatibility bits\r\n\r\n"
                        L"\t>> Pressing Cancel will disable AA Override",
@@ -1071,8 +1069,8 @@ sk::NVAPI::SetSLIOverride    (       DLL_ROLE role,
   NVAPI_CALL (DRS_CreateSession (&hSession));
   NVAPI_CALL (DRS_LoadSettings  (hSession));
 
-  NvDRSProfileHandle hProfile;
-  static NVDRS_APPLICATION  app = { };
+         NvDRSProfileHandle hProfile = { };
+  static NVDRS_APPLICATION  app      = { };
 
   NvU32 compat_bits_enum = 
     (role == DXGI ? SLI_COMPAT_BITS_DXGI_ID :
@@ -1214,16 +1212,16 @@ sk::NVAPI::SetSLIOverride    (       DLL_ROLE role,
     ret = NVAPI_ERROR;
 
     // This requires admin privs, and we will handle that gracefully...
-    NVAPI_SILENT ();
+    NVAPI_SILENT    ();
     NVAPI_SET_DWORD (compat_bits_val, compat_bits_enum, compat_bits);
     NVAPI_CALL2     (DRS_SetSetting (hSession, hProfile, &compat_bits_val), ret);
-    NVAPI_VERBOSE ();
+    NVAPI_VERBOSE   ();
 
     // Not running as admin, don't do the override!
     if (ret == NVAPI_INVALID_USER_PRIVILEGE)
     {
       int result = 
-        MessageBox ( NULL,
+        MessageBox ( nullptr,
                        L"Please run this game as Administrator to install SLI "
                        L"compatibility bits\r\n\r\n"
                        L"\t>> Pressing Cancel will disable SLI Override",

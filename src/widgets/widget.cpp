@@ -18,7 +18,6 @@
  *   If not, see <http://www.gnu.org/licenses/>.
  *
 **/
-#define NOMINMAX
 
 #include <SpecialK/widgets/widget.h>
 #include <SpecialK/utility.h>
@@ -295,6 +294,11 @@ SK_Widget::draw_base (void)
   if (SK_ImGui_Widgets.hide_all)
     return;
 
+  float fScale = 
+    ImGui::GetFont ()->Scale;
+
+                   ImGui::GetFont ()->Scale = scale;
+  ImGui::PushFont (ImGui::GetFont ());
 
   static std::unordered_set <SK_Widget *> initialized;
 
@@ -324,7 +328,7 @@ SK_Widget::draw_base (void)
   if (! resizable)
     flags |= ImGuiWindowFlags_NoResize;
 
-  if (click_through && (! SK_ImGui_Visible) && state__ != 1)
+  if (click_through && (! SK_ImGui_Active ()) && state__ != 1)
     flags |= ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize;
 
 
@@ -338,13 +342,13 @@ SK_Widget::draw_base (void)
 
     ImGui::SetNextWindowSize (ImVec2 (std::max (size.x, 420.0f), std::max (size.y, 190.0f)));
 
-    if (! SK_ImGui_Visible)
+    if (! SK_ImGui_Active ())
       nav_usable = true;
   }
 
   else
   {
-    if (! SK_ImGui_Visible)
+    if (! SK_ImGui_Active ())
       nav_usable = false;
 
     if ((! autofit) && (! resizable))
@@ -363,6 +367,8 @@ SK_Widget::draw_base (void)
   ImGui::Begin           ( SK_FormatString ("###Widget_%s", name.c_str ()).c_str (),
                              nullptr,
                                flags );
+
+  ImGui::SetWindowFontScale (SK_ImGui_Widgets.scale);
 
   static SK_Widget* focus_widget = nullptr;
 
@@ -400,21 +406,37 @@ SK_Widget::draw_base (void)
 
   if (right_clicked || focus_change)
   {
-    ImGui::SetWindowFocus ();
-    ImGui::GetIO          ().WantMoveMouse = true;
+    ImVec2 min (pos.x,          pos.y);
+    ImVec2 max (pos.x + size.x, pos.y + size.y);
 
-    ImGui::GetIO ().MousePos =
-      ImVec2 ( pos.x + size.x / 2.0f,
-               pos.y + size.y / 2.0f );
+    extern bool SK_ControlPanel_Activated;
+
+    if (SK_ControlPanel_Activated)
+    {
+      if (! ImGui::IsMouseHoveringRect (min, max)/* && ImGui::IsWindowFocused ()*/)
+      {
+        ImGui::GetIO ().WantMoveMouse = true;
+
+        ImGui::GetIO ().MousePos =
+          ImVec2 ( pos.x + size.x / 2.0f,
+                   pos.y + size.y / 2.0f );
+      }
+    }
+
+    ImGui::SetWindowFocus ();
 
     if (right_clicked)
       state__ = 1;
   }
 
   ImGui::End         ();
+
+  ImGui::PopFont ();
+  ImGui::GetFont ()->Scale = fScale;
 }
 
-extern void
+extern __declspec (dllexport) void
+__stdcall
 SK_ImGui_KeybindDialog (SK_Keybind* keybind);
 
 void
@@ -469,9 +491,7 @@ SK_Widget::config_base (void)
 {
   static bool changed = false;
 
-  ImGuiIO& io (ImGui::GetIO ());
-
-  const  float font_size           =             ImGui::GetFont  ()->FontSize                        * io.FontGlobalScale;
+  const  float font_size           =             ImGui::GetFont  ()->FontSize;//                        * scale;//io.FontGlobalScale;
   const  float font_size_multiline = font_size + ImGui::GetStyle ().ItemSpacing.y + ImGui::GetStyle ().ItemInnerSpacing.y;
 
   if (ImGui::Checkbox ("Movable", &movable))
@@ -578,7 +598,7 @@ SK_Widget::config_base (void)
 
       std::wstring original_binding = binding->human_readable;
 
-      extern void SK_ImGui_KeybindDialog (SK_Keybind* keybind);
+      extern void __stdcall SK_ImGui_KeybindDialog (SK_Keybind* keybind);
       SK_ImGui_KeybindDialog (binding);
 
       if (original_binding != binding->human_readable)
@@ -619,6 +639,10 @@ SK_Widget::config_base (void)
 
   ImGui::Separator ();
 
+  ImGui::SliderFloat ("Widget Scale", &scale, 0.25f, 2.0f);
+
+  ImGui::Separator ();
+
   bool done = false;
 
   done |= ImGui::Button ("  Save  ");
@@ -650,19 +674,19 @@ SK_Widget::load (iSK_INI*)
 
 
 #define SK_MakeKeyMask(vKey,ctrl,shift,alt) \
-  (UINT)((vKey) | (((ctrl) != 0) <<  9) |   \
-                  (((shift)!= 0) << 10) |   \
-                  (((alt)  != 0) << 11))
+  static_cast <UINT>((vKey) | (((ctrl) != 0) <<  9) |   \
+                              (((shift)!= 0) << 10) |   \
+                              (((alt)  != 0) << 11))
 
 BOOL
 SK_ImGui_WidgetRegistry::DispatchKeybinds (BOOL Control, BOOL Shift, BOOL Alt, BYTE vkCode)
 {
-  UINT uiMaskedKeyCode =
+  auto uiMaskedKeyCode =
     SK_MakeKeyMask (vkCode, Control, Shift, Alt);
 
   static std::array <SK_Widget *, 5> widgets { frame_pacing, volume_control, gpu_monitor, cpu_monitor, d3d11_pipeline };
 
-  for (auto widget : widgets)
+  for (auto&& widget : widgets)
   {
     if (widget && uiMaskedKeyCode == widget->getToggleKey ().masked_code)
     {

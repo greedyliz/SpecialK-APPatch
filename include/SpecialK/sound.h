@@ -22,8 +22,6 @@
 #ifndef __SK__SOUND_H__
 #define __SK__SOUND_H__
 
-#include <SpecialK/window.h>
-
 #include <Mmdeviceapi.h>
 #include <audiopolicy.h>
 #include <endpointvolume.h>
@@ -37,8 +35,6 @@ void                    __stdcall SK_WASAPI_GetAudioSessionProcs    (size_t* cou
 
 const char*             __stdcall SK_WASAPI_GetChannelName          (int channel_idx);
 
-
-#include <SpecialK/log.h>
 #include <SpecialK/steam_api.h>
 
 #include <atlbase.h>
@@ -63,7 +59,7 @@ public:
     wchar_t wszTitle [512] = { };
     
     window_t win = SK_FindRootWindow (proc_id);
-    if (win.root != 0)
+    if (win.root != nullptr)
     { 
       // This is all happening from the application's message pump in most games,
       //   so this specialized function avoids deadlocking the pump.
@@ -153,9 +149,9 @@ public:
   const char* getName (void) { return app_name_.c_str (); };
 
   // IUnknown
-  HRESULT
+  virtual HRESULT
   STDMETHODCALLTYPE
-  QueryInterface (REFIID riid, void **ppv)
+  QueryInterface (REFIID riid, void **ppv) override
   {    
     if (IID_IUnknown == riid)
     {
@@ -178,12 +174,12 @@ public:
     return S_OK;
   }
   
-  ULONG STDMETHODCALLTYPE AddRef (void)
+  virtual ULONG STDMETHODCALLTYPE AddRef (void) override
   {
     return InterlockedIncrement (&refs_);
   }
    
-  ULONG STDMETHODCALLTYPE Release (void)
+  virtual ULONG STDMETHODCALLTYPE Release (void) override
   {
     ULONG ulRef = InterlockedDecrement (&refs_);
 
@@ -195,27 +191,27 @@ public:
     return ulRef;
   }
 
-  HRESULT
+  virtual HRESULT
   STDMETHODCALLTYPE
-  OnDisplayNameChanged (PCWSTR NewDisplayName, LPCGUID EventContext) {
+  OnDisplayNameChanged (PCWSTR NewDisplayName, LPCGUID EventContext) override {
     UNREFERENCED_PARAMETER (NewDisplayName);
     UNREFERENCED_PARAMETER (EventContext);
 
     return S_OK;
   };
         
-  HRESULT
+  virtual HRESULT
   STDMETHODCALLTYPE
-  OnIconPathChanged (LPCWSTR NewIconPath, LPCGUID EventContext) {
+  OnIconPathChanged (LPCWSTR NewIconPath, LPCGUID EventContext) override {
     UNREFERENCED_PARAMETER (NewIconPath);
     UNREFERENCED_PARAMETER (EventContext);
 
     return S_OK;
   };
         
-  HRESULT
+  virtual HRESULT
   STDMETHODCALLTYPE
-  OnSimpleVolumeChanged (float NewVolume, BOOL NewMute, LPCGUID EventContext) {
+  OnSimpleVolumeChanged (float NewVolume, BOOL NewMute, LPCGUID EventContext) override {
     UNREFERENCED_PARAMETER (NewVolume);
     UNREFERENCED_PARAMETER (NewMute);
     UNREFERENCED_PARAMETER (EventContext);
@@ -223,9 +219,9 @@ public:
     return S_OK;
   };
       
-  HRESULT
+  virtual HRESULT
   STDMETHODCALLTYPE
-  OnChannelVolumeChanged (DWORD ChannelCount, float NewChannelVolumeArray[  ], DWORD ChangedChannel, LPCGUID EventContext) {
+  OnChannelVolumeChanged (DWORD ChannelCount, float NewChannelVolumeArray[  ], DWORD ChangedChannel, LPCGUID EventContext) override {
     // TODO
     UNREFERENCED_PARAMETER (ChannelCount);
     UNREFERENCED_PARAMETER (NewChannelVolumeArray);
@@ -235,22 +231,22 @@ public:
     return S_OK;
   };
       
-  HRESULT
+  virtual HRESULT
   STDMETHODCALLTYPE
-  OnGroupingParamChanged (LPCGUID NewGroupingParam, LPCGUID EventContext) {
+  OnGroupingParamChanged (LPCGUID NewGroupingParam, LPCGUID EventContext) override {
     UNREFERENCED_PARAMETER (NewGroupingParam);
     UNREFERENCED_PARAMETER (EventContext);
 
     return S_OK;
   }
 
-  HRESULT
+  virtual HRESULT
   STDMETHODCALLTYPE
-  OnStateChanged (AudioSessionState NewState);
+  OnStateChanged (AudioSessionState NewState) override;
         
-  HRESULT
+  virtual HRESULT
   STDMETHODCALLTYPE
-  OnSessionDisconnected (AudioSessionDisconnectReason DisconnectReason);
+  OnSessionDisconnected (AudioSessionDisconnectReason DisconnectReason) override;
 
   ~SK_WASAPI_AudioSession (void)
   {
@@ -299,7 +295,7 @@ public:
 
     meter_info_ = pMeterInfo;
 
-    if (meter_info_ != nullptr && sessions_.size ())
+    if (meter_info_ != nullptr && (! sessions_.empty ()))
       return;
 
     CComPtr <IMMDeviceEnumerator> pDevEnum;
@@ -359,7 +355,8 @@ public:
 
       if (SUCCEEDED (pSessionCtl2->GetState (&state)))
       {
-        SK_WASAPI_AudioSession* pSession = new SK_WASAPI_AudioSession (pSessionCtl2, this);
+        auto* pSession =
+          new SK_WASAPI_AudioSession (pSessionCtl2, this);
 
         sessions_.emplace (pSession);
 
@@ -379,9 +376,9 @@ public:
   }
 
   // IUnknown
-  HRESULT
+  virtual HRESULT
   STDMETHODCALLTYPE
-  QueryInterface (REFIID riid, void **ppv)
+  QueryInterface (REFIID riid, void **ppv) override
   {    
     if (IID_IUnknown == riid)
     {
@@ -404,12 +401,12 @@ public:
     return S_OK;
   }
   
-  ULONG STDMETHODCALLTYPE AddRef (void)
+  virtual ULONG STDMETHODCALLTYPE AddRef (void) override
   {
     return InterlockedIncrement (&refs_);
   }
    
-  ULONG STDMETHODCALLTYPE Release (void)
+  virtual ULONG STDMETHODCALLTYPE Release (void) override
   {
     ULONG ulRef = InterlockedDecrement (&refs_);
 
@@ -440,9 +437,9 @@ public:
     return inactive_sessions_.view.data ();
   }
   
-  HRESULT
+  virtual HRESULT
   STDMETHODCALLTYPE
-  OnSessionCreated (IAudioSessionControl *pNewSession)
+  OnSessionCreated (IAudioSessionControl *pNewSession) override
   {
     if (pNewSession)
     {
@@ -454,7 +451,8 @@ public:
         DWORD dwProcess = 0;
         if (SUCCEEDED (pSessionCtl2->GetProcessId (&dwProcess)))
         {
-          SK_WASAPI_AudioSession* pSession = new SK_WASAPI_AudioSession (pSessionCtl2, this);
+          auto* pSession =
+            new SK_WASAPI_AudioSession (pSessionCtl2, this);
 
           sessions_.emplace (pSession);
 

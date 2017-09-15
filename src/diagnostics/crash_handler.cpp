@@ -18,8 +18,7 @@
  *   If not, see <http://www.gnu.org/licenses/>.
  *
 **/
-#define _CRT_SECURE_NO_WARNINGS
-#define NOMINMAX
+
 #include <SpecialK/diagnostics/crash_handler.h>
 
 #include <SpecialK/config.h>
@@ -54,7 +53,7 @@ extern HMODULE __stdcall SK_GetDLL (void);
 
 using namespace SK::Diagnostics;
 
-typedef LPTOP_LEVEL_EXCEPTION_FILTER (WINAPI *SetUnhandledExceptionFilter_pfn)(
+using SetUnhandledExceptionFilter_pfn = LPTOP_LEVEL_EXCEPTION_FILTER (WINAPI *)(
     _In_opt_ LPTOP_LEVEL_EXCEPTION_FILTER lpTopLevelExceptionFilter
 );
 
@@ -84,7 +83,7 @@ CrashHandler::Reinstall (void)
 
 
 struct {
-  HGLOBAL  ref = 0;
+  HGLOBAL  ref = nullptr;
   uint8_t* buf = nullptr;
 } static crash_sound;
 
@@ -100,7 +99,7 @@ CrashHandler::Init (void)
     crash_sound.ref   =
       LoadResource (SK_GetDLL (), default_sound);
 
-    if (crash_sound.ref != 0)
+    if (crash_sound.ref != nullptr)
     {
       crash_sound.buf =
         static_cast <uint8_t *> (LockResource (crash_sound.ref));
@@ -114,10 +113,10 @@ CrashHandler::Init (void)
     crash_log.init (L"logs/crash.log", L"w");
   }
 
-  SK_CreateDLLHook2 (       L"kernel32.dll",
+  SK_CreateDLLHook  (       L"kernel32.dll",
                              "SetUnhandledExceptionFilter",
                               SetUnhandledExceptionFilter_Detour,
-reinterpret_cast <LPVOID *> (&SetUnhandledExceptionFilter_Original) );
+     static_cast_p2p <void> (&SetUnhandledExceptionFilter_Original) );
 
   SymSetOptions ( SYMOPT_CASE_INSENSITIVE | SYMOPT_LOAD_LINES    | SYMOPT_UNDNAME |
                   SYMOPT_NO_PROMPTS       | SYMOPT_DEFERRED_LOADS );
@@ -365,7 +364,7 @@ SK_TopLevelExceptionFilter ( _In_ struct _EXCEPTION_POINTERS *ExceptionInfo )
       break;
   }
 
-  HMODULE hModSource = nullptr;
+  HMODULE hModSource           = nullptr;
   char    szModName [MAX_PATH] = { };
   HANDLE  hProc                = GetCurrentProcess ();
 
@@ -472,9 +471,9 @@ SK_TopLevelExceptionFilter ( _In_ struct _EXCEPTION_POINTERS *ExceptionInfo )
   CONTEXT ctx (*ExceptionInfo->ContextRecord);
 
 #ifdef _WIN64
-  STACKFRAME64 stackframe;
+  STACKFRAME64 stackframe = { };
 #else
-  STACKFRAME   stackframe;
+  STACKFRAME   stackframe = { };
 #endif
 
   stackframe.AddrPC.Mode   = AddrModeFlat;
@@ -542,7 +541,8 @@ SK_TopLevelExceptionFilter ( _In_ struct _EXCEPTION_POINTERS *ExceptionInfo )
                               0 );
 #endif
 
-    SYMBOL_INFO_PACKAGE sip;
+    SYMBOL_INFO_PACKAGE sip = { };
+
     sip.si.SizeOfStruct = sizeof SYMBOL_INFO;
     sip.si.MaxNameLen   = sizeof sip.name;
 
@@ -890,8 +890,8 @@ SK_SymRefreshModuleList ( HANDLE hProc = GetCurrentProcess () )
     LeaveCriticalSection (&cs_dbghelp);
 }
 
-typedef void (__cdecl *SteamAPI_SetBreakpadAppID_pfn)( uint32_t unAppID );
-typedef void (__cdecl *SteamAPI_UseBreakpadCrashHandler_pfn)( char const *pchVersion, char const *pchDate, 
+using SteamAPI_SetBreakpadAppID_pfn = void (__cdecl *)( uint32_t unAppID );
+using SteamAPI_UseBreakpadCrashHandler_pfn = void (__cdecl *)( char const *pchVersion, char const *pchDate, 
                                                               char const *pchTime,    bool        bFullMemoryDumps,
                                                               void       *pvContext,  LPVOID      m_pfnPreMinidumpCallback );
 
@@ -903,8 +903,6 @@ __cdecl
 SteamAPI_SetBreakpadAppID_Detour ( uint32_t unAppId )
 {
   UNREFERENCED_PARAMETER (unAppId);
-
-  return;
 }
 
 void
@@ -922,8 +920,6 @@ SteamAPI_UseBreakpadCrashHandler_Detour ( char const *pchVersion,
   UNREFERENCED_PARAMETER (bFullMemoryDumps);
   UNREFERENCED_PARAMETER (pvContext);
   UNREFERENCED_PARAMETER (m_pfnPreMinidumpCallback);
-
-  return;
 }
 
 #include <diagnostics/compatibility.h>
@@ -931,6 +927,7 @@ SteamAPI_UseBreakpadCrashHandler_Detour ( char const *pchVersion,
 void
 SK_BypassSteamCrashHandler (void)
 {
+#if 0
   if (! config.steam.silent)
   {
 #ifdef _WIN64
@@ -947,20 +944,21 @@ SK_BypassSteamCrashHandler (void)
       {
         crash_log.Log (L"Disabling Steam Breakpad...");
 
-        SK_CreateDLLHook2 (  wszSteamDLL,
-                             "SteamAPI_UseBreakpadCrashHandler",
-                              SteamAPI_UseBreakpadCrashHandler_Detour,
-reinterpret_cast <LPVOID *> (&SteamAPI_UseBrakepadCrashHandler_NEVER) );
+        SK_CreateDLLHook2 (       wszSteamDLL,
+                                  "SteamAPI_UseBreakpadCrashHandler",
+                                   SteamAPI_UseBreakpadCrashHandler_Detour,
+          static_cast_p2p <void> (&SteamAPI_UseBrakepadCrashHandler_NEVER) );
       
-        SK_CreateDLLHook2 (  wszSteamDLL,
-                             "SteamAPI_SetBreakpadAppID",
-                              SteamAPI_SetBreakpadAppID_Detour,
-reinterpret_cast <LPVOID *> (&SteamAPI_SetBreakpadAppID_NEVER) );
+        SK_CreateDLLHook2 (       wszSteamDLL,
+                                  "SteamAPI_SetBreakpadAppID",
+                                   SteamAPI_SetBreakpadAppID_Detour,
+          static_cast_p2p <void> (&SteamAPI_SetBreakpadAppID_NEVER) );
 
         SK_ApplyQueuedHooks ();
       }
     }
   }
+#endif
 }
 
 
@@ -985,7 +983,7 @@ CrashHandler::InitSyms (void)
         crash_sound.ref   =
           LoadResource (SK_GetDLL (), default_sound);
 
-        if (crash_sound.ref != 0)
+        if (crash_sound.ref != nullptr)
         {
           crash_sound.buf =
             reinterpret_cast <uint8_t *> (LockResource (crash_sound.ref));
@@ -1001,7 +999,7 @@ CrashHandler::InitSyms (void)
 
     SymInitialize (
       GetCurrentProcess (),
-        NULL,
+        nullptr,
           TRUE );
   }
 

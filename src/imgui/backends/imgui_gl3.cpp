@@ -35,6 +35,7 @@ static unsigned int g_VboHandle              = 0,
 // This is the main rendering function that you have to implement and provide to ImGui (via setting up 'RenderDrawListsFn' in the ImGuiIO structure)
 // If text or lines are blurry when integrating ImGui in your engine:
 // - in your Render function, try translating your projection matrix by (0.5f,0.5f) or (0.375f,0.375f)
+IMGUI_API
 void
 ImGui_ImplGL3_RenderDrawLists (ImDrawData* draw_data)
 {
@@ -317,6 +318,10 @@ ImGui_ImplGlfwGL3_CreateDeviceObjects (void)
 void
 ImGui_ImplGL3_InvalidateDeviceObjects (void)
 {
+  extern void
+  SK_ImGui_ResetExternal (void);
+  SK_ImGui_ResetExternal ();
+
   if (g_VaoHandle)      glDeleteVertexArrays (1, &g_VaoHandle);
   if (g_VboHandle)      glDeleteBuffers      (1, &g_VboHandle);
   if (g_ElementsHandle) glDeleteBuffers      (1, &g_ElementsHandle);
@@ -437,7 +442,7 @@ ImGui_ImplGL3_NewFrame (void)
                  static_cast <float> (g_TicksPerSecond);
   g_Time       =                      current_time;
 
-  // Read keyboard modifiers inputs
+  // Read keyboard modifiers inputS
   io.KeyCtrl   = (io.KeysDown [VK_CONTROL]) != 0;
   io.KeyShift  = (io.KeysDown [VK_SHIFT])   != 0;
   io.KeyAlt    = (io.KeysDown [VK_MENU])    != 0;

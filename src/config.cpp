@@ -19,7 +19,6 @@
  *
 **/
 
-#define _CRT_SECURE_NO_WARNINGS
 #include <SpecialK/config.h>
 #include <SpecialK/core.h>
 #include <SpecialK/dxgi_interfaces.h>
@@ -29,6 +28,7 @@
 #include <SpecialK/ini.h>
 #include <SpecialK/log.h>
 #include <SpecialK/steam_api.h>
+#include <SpecialK/nvapi.h>
 
 #include <SpecialK/DLL_VERSION.H>
 #include <SpecialK/input/input.h>
@@ -47,6 +47,22 @@ iSK_INI*             osd_ini         = nullptr;
 iSK_INI*             achievement_ini = nullptr;
 sk_config_t          config;
 sk::ParameterFactory g_ParameterFactory;
+
+
+static std::unordered_map <std::wstring, SK_GAME_ID> games;
+
+SK_GAME_ID
+__stdcall
+SK_GetCurrentGameID (void)
+{
+  static SK_GAME_ID current_game =
+    games.count (SK_GetHostApp ()) ?
+          games [SK_GetHostApp ()] :
+          SK_GAME_ID::UNKNOWN_GAME;
+
+  return current_game;
+}
+
 
 struct {
   struct {
@@ -159,6 +175,11 @@ struct {
   struct {
     sk::ParameterBool*    silent;
   } log;
+
+  struct
+  {
+    sk::ParameterBool*    spoof_BLoggedOn;
+  } drm;
 } steam;
 
 struct {
@@ -222,6 +243,7 @@ struct {
     sk::ParameterBool*    force_d3d9ex;
     sk::ParameterInt*     hook_type;
     sk::ParameterBool*    impure;
+    sk::ParameterBool*    enable_texture_mods;
   } d3d9;
 } render;
 
@@ -248,6 +270,8 @@ struct {
     sk::ParameterBool*    ignore_non_mipped;
     sk::ParameterBool*    allow_staging;
   } cache;
+    sk::ParameterStringW* res_root;
+    sk::ParameterBool*    dump_on_load;
 } texture;
 
 struct {
@@ -274,9 +298,10 @@ struct {
     sk::ParameterBool*    hook_xinput;
 
     struct {
-      sk::ParameterInt*  ui_slot;
-      sk::ParameterInt*  placeholders;
-      sk::ParameterBool* disable_rumble;
+      sk::ParameterInt*     ui_slot;
+      sk::ParameterInt*     placeholders;
+      sk::ParameterBool*    disable_rumble;
+      sk::ParameterStringW* assignment;
     } xinput;
 
     sk::ParameterBool*   native_ps4;
@@ -332,12 +357,6 @@ struct {
   sk::ParameterInt*       last_known;
 } apis;
 
-
-extern const wchar_t*
-SK_Steam_PopupOriginToWStr (int origin);
-extern int
-SK_Steam_PopupOriginWStrToEnum (const wchar_t* str);
-
 bool
 SK_LoadConfig (std::wstring name) {
   return SK_LoadConfigEx (name);
@@ -345,13 +364,6 @@ SK_LoadConfig (std::wstring name) {
 
 
 SK_AppCache_Manager app_cache_mgr;
-
-const wchar_t*
-__stdcall
-SK_GetNaiveConfigPath (void);
-
-extern const wchar_t*
-SK_GetFullyQualifiedApp (void);
 
 __declspec (noinline)
 const wchar_t*
@@ -778,6 +790,16 @@ SK_LoadConfigEx (std::wstring name, bool create)
     dll_ini,
       L"Input.XInput",
         L"DisableRumble" );
+
+  input.gamepad.xinput.assignment =
+    dynamic_cast <sk::ParameterStringW *>
+    ( g_ParameterFactory.create_parameter <std::wstring> (
+      L"Re-Assign XInput Slots")
+      );
+  input.gamepad.xinput.assignment->register_to_ini (
+    dll_ini,
+      L"Input.XInput",
+        L"SlotReassignment");
 
 
   window.borderless =
@@ -1363,6 +1385,15 @@ SK_LoadConfigEx (std::wstring name, bool create)
       dll_ini,
         L"Render.D3D9",
           L"ForceImpure" );
+    render.d3d9.enable_texture_mods =
+      dynamic_cast <sk::ParameterBool *>
+        (g_ParameterFactory.create_parameter <bool> (
+          L"Enable Texture Modding Support")
+        );
+    render.d3d9.enable_texture_mods->register_to_ini (
+      dll_ini,
+        L"Render.D3D9",
+          L"EnableTextureMods" );
     render.d3d9.hook_type =
       dynamic_cast <sk::ParameterInt *>
         (g_ParameterFactory.create_parameter <int> (
@@ -1564,6 +1595,26 @@ SK_LoadConfigEx (std::wstring name, bool create)
       dll_ini,
         L"Textures.D3D11",
           L"ResourceRoot" );
+
+    texture.res_root =
+      dynamic_cast <sk::ParameterStringW *>
+        (g_ParameterFactory.create_parameter <std::wstring> (
+          L"Resource Root")
+        );
+    texture.res_root->register_to_ini (
+      dll_ini,
+        L"Textures.General",
+          L"ResourceRoot" );
+
+    texture.dump_on_load =
+      dynamic_cast <sk::ParameterBool *>
+        (g_ParameterFactory.create_parameter <bool> (
+          L"Dump Textures while Loading")
+        );
+    texture.dump_on_load->register_to_ini (
+      dll_ini,
+        L"Textures.General",
+          L"DumpOnFirstLoad" );
 
     texture.cache.min_entries =
       dynamic_cast <sk::ParameterInt *>
@@ -2051,10 +2102,20 @@ SK_LoadConfigEx (std::wstring name, bool create)
       L"Steam.Log",
         L"Silent" );
 
+  steam.drm.spoof_BLoggedOn =
+    dynamic_cast <sk::ParameterBool *>
+    ( g_ParameterFactory.create_parameter <bool> (
+        L"Fix For Stupid Games That Don't Know How DRM Works.")
+      );
+  steam.drm.spoof_BLoggedOn->register_to_ini (
+    dll_ini,
+      L"Steam.DRMWorks",
+        L"SpoofBLoggedOn" );
+
   iSK_INI::_TSectionMap& sections =
     dll_ini->get_sections ();
 
-  iSK_INI::_TSectionMap::const_iterator sec =
+  auto sec =
     sections.begin ();
 
   int import = 0;
@@ -2125,7 +2186,7 @@ SK_LoadConfigEx (std::wstring name, bool create)
       imports [import].architecture->load ();
       imports [import].blacklist->load    ();
 
-      imports [import].hLibrary = NULL;
+      imports [import].hLibrary = nullptr;
 
       ++import;
 
@@ -2161,59 +2222,35 @@ SK_LoadConfigEx (std::wstring name, bool create)
   config.render.dxgi.exception_mode = -1;
   config.render.dxgi.scaling_mode   = -1;
 
-
-  enum class SK_GAME_ID {
-    Tyranny,              // Tyranny.exe
-    Shadowrun_HongKong,   // SRHK.exe
-    TidesOfNumenera,      // TidesOfNumenera.exe
-    MassEffect_Andromeda, // MassEffectAndromeda.exe
-    MadMax,               // MadMax.exe
-    Dreamfall_Chapters,   // Dreamfall Chapters.exe
-    TheWitness,           // witness_d3d11.exe, witness64_d3d11.exe
-    Obduction,            // Obduction-Win64-Shipping.exe
-    TheWitcher3,          // witcher3.exe
-    ResidentEvil7,        // re7.exe
-    DragonsDogma,         // DDDA.exe
-    EverQuest,            // eqgame.exe
-    GodEater2RageBurst,   // GE2RB.exe
-    WatchDogs2,           // WatchDogs2.exe
-    NieRAutomata,         // NieRAutomata.exe
-    Warframe_x64,         // Warframe.x64.exe
-    LEGOCityUndercover,   // LEGOLCUR_DX11.exe
-    Sacred ,              // sacred.exe
-    Sacred2,              // sacred2.exe
-    FinalFantasy9,        // FF9.exe   
-    EdithFinch,           // FinchGame.exe
-    FinalFantasyX_X2,     // FFX.exe / FFX-2.exe
-    DeadlyPremonition     // DP.exe DPLauncher.exe
-  };
-
-  static std::unordered_map <std::wstring, SK_GAME_ID> games;
-
-  games.emplace ( L"Tyranny.exe",                  SK_GAME_ID::Tyranny              );
-  games.emplace ( L"SRHK.exe",                     SK_GAME_ID::Shadowrun_HongKong   );
-  games.emplace ( L"TidesOfNumenera.exe",          SK_GAME_ID::TidesOfNumenera      );
-  games.emplace ( L"MassEffectAndromeda.exe",      SK_GAME_ID::MassEffect_Andromeda );
-  games.emplace ( L"MadMax.exe",                   SK_GAME_ID::MadMax               );
-  games.emplace ( L"Dreamfall Chapters.exe",       SK_GAME_ID::Dreamfall_Chapters   );
-  games.emplace ( L"TheWitness.exe",               SK_GAME_ID::TheWitness           );
-  games.emplace ( L"Obduction-Win64-Shipping.exe", SK_GAME_ID::Obduction            );
-  games.emplace ( L"witcher3.exe",                 SK_GAME_ID::TheWitcher3          );
-  games.emplace ( L"re7.exe",                      SK_GAME_ID::ResidentEvil7        );
-  games.emplace ( L"DDDA.exe",                     SK_GAME_ID::DragonsDogma         );
-  games.emplace ( L"eqgame.exe",                   SK_GAME_ID::EverQuest            );
-  games.emplace ( L"GE2RB.exe",                    SK_GAME_ID::GodEater2RageBurst   );
-  games.emplace ( L"WatchDogs2.exe",               SK_GAME_ID::WatchDogs2           );
-  games.emplace ( L"NieRAutomata.exe",             SK_GAME_ID::NieRAutomata         );
-  games.emplace ( L"Warframe.x64.exe",             SK_GAME_ID::Warframe_x64         );
-  games.emplace ( L"LEGOLCUR_DX11.exe",            SK_GAME_ID::LEGOCityUndercover   );
-  games.emplace ( L"Sacred.exe",                   SK_GAME_ID::Sacred               );
-  games.emplace ( L"sacred2.exe",                  SK_GAME_ID::Sacred2              );
-  games.emplace ( L"FF9.exe",                      SK_GAME_ID::FinalFantasy9        );
-  games.emplace ( L"FinchGame.exe",                SK_GAME_ID::EdithFinch           );
-  games.emplace ( L"FFX.exe",                      SK_GAME_ID::FinalFantasyX_X2     );
-  games.emplace ( L"FFX-2.exe",                    SK_GAME_ID::FinalFantasyX_X2     );
-  games.emplace ( L"DP.exe",                       SK_GAME_ID::DeadlyPremonition    );
+  games.emplace ( L"Tyranny.exe",                            SK_GAME_ID::Tyranny                      );
+  games.emplace ( L"SRHK.exe",                               SK_GAME_ID::Shadowrun_HongKong           );
+  games.emplace ( L"TidesOfNumenera.exe",                    SK_GAME_ID::TidesOfNumenera              );
+  games.emplace ( L"MassEffectAndromeda.exe",                SK_GAME_ID::MassEffect_Andromeda         );
+  games.emplace ( L"MadMax.exe",                             SK_GAME_ID::MadMax                       );
+  games.emplace ( L"Dreamfall Chapters.exe",                 SK_GAME_ID::Dreamfall_Chapters           );
+  games.emplace ( L"TheWitness.exe",                         SK_GAME_ID::TheWitness                   );
+  games.emplace ( L"Obduction-Win64-Shipping.exe",           SK_GAME_ID::Obduction                    );
+  games.emplace ( L"witcher3.exe",                           SK_GAME_ID::TheWitcher3                  );
+  games.emplace ( L"re7.exe",                                SK_GAME_ID::ResidentEvil7                );
+  games.emplace ( L"DDDA.exe",                               SK_GAME_ID::DragonsDogma                 );
+  games.emplace ( L"eqgame.exe",                             SK_GAME_ID::EverQuest                    );
+  games.emplace ( L"GE2RB.exe",                              SK_GAME_ID::GodEater2RageBurst           );
+  games.emplace ( L"WatchDogs2.exe",                         SK_GAME_ID::WatchDogs2                   );
+  games.emplace ( L"NieRAutomata.exe",                       SK_GAME_ID::NieRAutomata                 );
+  games.emplace ( L"Warframe.x64.exe",                       SK_GAME_ID::Warframe_x64                 );
+  games.emplace ( L"LEGOLCUR_DX11.exe",                      SK_GAME_ID::LEGOCityUndercover           );
+  games.emplace ( L"Sacred.exe",                             SK_GAME_ID::Sacred                       );
+  games.emplace ( L"sacred2.exe",                            SK_GAME_ID::Sacred2                      );
+  games.emplace ( L"FF9.exe",                                SK_GAME_ID::FinalFantasy9                );
+  games.emplace ( L"FinchGame.exe",                          SK_GAME_ID::EdithFinch                   );
+  games.emplace ( L"FFX.exe",                                SK_GAME_ID::FinalFantasyX_X2             );
+  games.emplace ( L"FFX-2.exe",                              SK_GAME_ID::FinalFantasyX_X2             );
+  games.emplace ( L"DP.exe",                                 SK_GAME_ID::DeadlyPremonition            );
+  games.emplace ( L"GG2Game.exe",                            SK_GAME_ID::GalGun_Double_Peace          );
+  games.emplace ( L"AkibaUU.exe",                            SK_GAME_ID::AKIBAs_Trip                  );
+  games.emplace ( L"Ys7.exe",                                SK_GAME_ID::YS_Seven                     );
+  games.emplace ( L"TOS.exe",                                SK_GAME_ID::Tales_of_Symphonia           );
+  games.emplace ( L"Life is Strange - Before the Storm.exe", SK_GAME_ID::LifeIsStrange_BeforeTheStorm );
 
   //
   // Application Compatibility Overrides
@@ -2429,8 +2466,10 @@ SK_LoadConfigEx (std::wstring name, bool create)
         // Don't auto-pump callbacks 
         //  Excessively lenghty startup is followed by actual SteamAPI init eventually...
         config.steam.auto_pump_callbacks = false;
-        break;
 
+        //config.render.dxgi.full_state_cache    = true;
+        //SK_DXGI_FullStateCache                 = config.render.dxgi.full_state_cache;
+        break;
 
 #ifndef _WIN64
       case SK_GAME_ID::DeadlyPremonition:
@@ -2440,6 +2479,17 @@ SK_LoadConfigEx (std::wstring name, bool create)
         config.apis.d3d8.hook                  = false;
         config.input.mouse.add_relative_motion = false;
         break;
+#endif
+
+#ifdef _WIN64
+        case SK_GAME_ID::LifeIsStrange_BeforeTheStorm:
+          config.apis.d3d9.hook       = false;
+          config.apis.d3d9ex.hook     = false;
+          config.apis.OpenGL.hook     = false;
+          config.apis.Vulkan.hook     = false;
+          config.apis.dxgi.d3d11.hook = true;
+          config.apis.dxgi.d3d12.hook = false;
+          break;
 #endif
     }
   }
@@ -2647,6 +2697,9 @@ SK_LoadConfigEx (std::wstring name, bool create)
   if (render.d3d9.impure->load ())
     config.render.d3d9.force_impure =
       render.d3d9.impure->get_value ();
+  if (render.d3d9.enable_texture_mods->load ())
+    config.textures.d3d9_mod =
+      render.d3d9.enable_texture_mods->get_value ();
   if (render.d3d9.hook_type->load ())
     config.render.d3d9.hook_type =
       render.d3d9.hook_type->get_value ();
@@ -2821,6 +2874,10 @@ SK_LoadConfigEx (std::wstring name, bool create)
     config.textures.d3d11.inject = texture.d3d11.inject->get_value ();
   if (texture.d3d11.res_root->load ())
     config.textures.d3d11.res_root = texture.d3d11.res_root->get_value ();
+  if (texture.res_root->load ())
+    config.textures.d3d11.res_root = texture.res_root->get_value ();
+  if (texture.dump_on_load->load ())
+    config.textures.dump_on_load = texture.dump_on_load->get_value ();
 
   if (texture.cache.max_entries->load ())
     config.textures.cache.max_entries = texture.cache.max_entries->get_value ();
@@ -2896,6 +2953,36 @@ SK_LoadConfigEx (std::wstring name, bool create)
 
   if (input.gamepad.xinput.disable_rumble->load ())
     config.input.gamepad.xinput.disable_rumble = input.gamepad.xinput.disable_rumble->get_value ();
+
+
+  if (input.gamepad.xinput.assignment->load ())
+  {
+    wchar_t* wszAssign =
+      _wcsdup (input.gamepad.xinput.assignment->get_value ().c_str ());
+
+    wchar_t* wszBuf = nullptr;
+    wchar_t* wszTok =
+      std::wcstok (wszAssign, L",", &wszBuf);
+
+    if (wszTok == nullptr)
+    {
+      config.input.gamepad.xinput.assignment [0] = 0; config.input.gamepad.xinput.assignment [1] = 1;
+      config.input.gamepad.xinput.assignment [2] = 2; config.input.gamepad.xinput.assignment [3] = 3;
+    }
+
+    int idx = 0;
+
+    while (wszTok && idx < 4)
+    {
+      config.input.gamepad.xinput.assignment [idx++] =
+        _wtoi (wszTok);
+
+      wszTok =
+        std::wcstok (nullptr, L",", &wszBuf);
+    }
+
+    free (wszAssign);
+  }
 
   if (input.gamepad.xinput.ui_slot->load ())
     config.input.gamepad.xinput.ui_slot = input.gamepad.xinput.ui_slot->get_value ();
@@ -3004,6 +3091,8 @@ SK_LoadConfigEx (std::wstring name, bool create)
 
   if (steam.log.silent->load ())
     config.steam.silent = steam.log.silent->get_value ();
+  if (steam.drm.spoof_BLoggedOn->load ())
+    config.steam.spoof_BLoggedOn = steam.drm.spoof_BLoggedOn->get_value ();
 
   if (steam.system.appid->load ())
     config.steam.appid = steam.system.appid->get_value ();
@@ -3087,6 +3176,14 @@ SK_LoadConfigEx (std::wstring name, bool create)
     config.system.version = version->get_value ();
 
 
+
+
+  void
+  WINAPI
+  SK_D3D11_SetResourceRoot (const wchar_t* root);
+  SK_D3D11_SetResourceRoot (config.textures.d3d11.res_root.c_str ());
+
+
   //
   // EMERGENCY OVERRIDES
   //
@@ -3111,6 +3208,83 @@ SK_LoadConfigEx (std::wstring name, bool create)
 
 
 
+  static bool scanned = false;
+
+  if ((! scanned) && (! config.window.res.override.isZero ()))
+  {
+    scanned = true;
+
+    if (games.count (std::wstring (SK_GetHostApp ())))
+    {
+      switch (games [std::wstring (SK_GetHostApp ())])
+      {
+        case SK_GAME_ID::GalGun_Double_Peace:
+        {
+          CreateThread (nullptr, 0, [](LPVOID) ->
+          DWORD
+          {
+            // Wait for the image relocation to settle down, or we'll probably
+            //   break the memory scanner.
+            WaitForInputIdle (GetCurrentProcess (), 3333UL);
+
+            void
+            SK_ResHack_PatchGame (uint32_t w, uint32_t h);
+
+            SK_ResHack_PatchGame (1920, 1080);
+
+            CloseHandle (GetCurrentThread ());
+
+            return 0;
+          }, nullptr, 0x00, nullptr);
+        } break;
+
+
+        case SK_GAME_ID::YS_Seven:
+        {
+          CreateThread (nullptr, 0, [ ] (LPVOID) ->
+                        DWORD
+          {
+            // Wait for the image relocation to settle down, or we'll probably
+            //   break the memory scanner.
+            WaitForInputIdle (GetCurrentProcess (), 3333UL);
+        
+            void
+              SK_ResHack_PatchGame2 (uint32_t w, uint32_t h);
+        
+            SK_ResHack_PatchGame2 (1920, 1080);
+        
+            CloseHandle (GetCurrentThread ());
+        
+            return 0;
+          }, nullptr, 0x00, nullptr);
+        } break;
+
+
+        case SK_GAME_ID::AKIBAs_Trip:
+        {
+          CreateThread (nullptr, 0, [](LPVOID) ->
+          DWORD
+          {
+            // Wait for the image relocation to settle down, or we'll probably
+            //   break the memory scanner.
+            WaitForInputIdle (GetCurrentProcess (), 3333UL);
+
+            void
+            SK_ResHack_PatchGame (uint32_t w, uint32_t h);
+
+            SK_ResHack_PatchGame (1920, 1080);
+
+            CloseHandle (GetCurrentThread ());
+
+            return 0;
+          }, nullptr, 0x00, nullptr);
+        } break;
+      }
+    }
+  }
+
+
+
   //if ( SK_GetDLLRole () == DLL_ROLE::D3D8 ||
   //     SK_GetDLLRole () == DLL_ROLE::DDraw )
   //{
@@ -3123,6 +3297,126 @@ SK_LoadConfigEx (std::wstring name, bool create)
     return false;
 
   return true;
+}
+
+void
+SK_ResHack_PatchGame ( uint32_t width,
+                       uint32_t height )
+{
+  static unsigned int replacements = 0;
+
+  struct
+  {
+    struct
+    {
+      uint32_t w, h;
+    } pattern;
+
+    struct
+    {
+      uint32_t w = config.window.res.override.x,
+               h = config.window.res.override.y;
+    } replacement;
+  } res_mod;
+
+  res_mod.pattern.w = width;
+  res_mod.pattern.h = height;
+
+        uint32_t* pOut;
+  const void*     pPattern = &res_mod.pattern;
+
+  pOut =
+    reinterpret_cast <uint32_t *> (
+      nullptr
+    );
+
+
+  for (int i = 0 ; i < 3; i++)
+  {
+    pOut =
+      static_cast <uint32_t *> (
+        SK_ScanAlignedEx ( pPattern, 8, nullptr, pOut, 8 )
+      );
+
+
+    if (pOut != nullptr)
+    {
+      if ( SK_InjectMemory ( pOut,
+                               &res_mod.replacement.w,
+                                8,
+                                  PAGE_READWRITE )
+         )
+      {
+        ++replacements;
+      }
+
+      pOut += 8;
+    }
+
+    else
+    {
+      dll_log.Log ( L"[GalGunHACK] ** %lu Resolution Replacements Made  ==>  "
+                                         L"( %lux%lu --> %lux%lu )",
+                      replacements,
+                        width, height,
+                          res_mod.replacement.w, res_mod.replacement.h );
+      break;
+    }
+  }
+}
+
+void
+SK_ResHack_PatchGame2 ( uint32_t width,
+                        uint32_t height )
+{
+  static unsigned int replacements = 0;
+
+  uint32_t orig [2] = { 0x00000000,
+                        0x00000000 };
+
+  *(orig + 0) = width;
+  *(orig + 1) = height;
+
+  auto* pOut = reinterpret_cast <uint32_t *> (nullptr);
+    //reinterpret_cast  <uint32_t *> (GetModuleHandle (nullptr));
+
+  for (int i = 0 ; i < 5; i++)
+  {
+    pOut =
+      static_cast <uint32_t *> (
+        SK_ScanAlignedEx (orig, 8, nullptr, pOut, 4)
+      );
+
+    if (pOut != nullptr)
+    {
+      struct {
+        uint32_t w = static_cast <uint32_t> (config.window.res.override.x),
+                 h = static_cast <uint32_t> (config.window.res.override.y);
+      } out_data;
+
+
+      if ( SK_InjectMemory ( pOut,
+                               &out_data.w,
+                                 8,
+                                   PAGE_READWRITE )
+         )
+      {
+        ++replacements;
+      }
+
+      pOut += 8;
+    }
+
+    if (pOut == nullptr)
+    {
+      dll_log.Log ( L"[AkibasHACK] ** %lu Resolution Replacements Made  ==>  "
+                                      L"( %lux%lu --> %lux%lu )",
+                      replacements,
+                        width, height,
+                          config.window.res.override.x, config.window.res.override.y );
+      break;
+    }
+  }
 }
 
 bool
@@ -3200,7 +3494,7 @@ SK_SaveConfig ( std::wstring name,
   imgui.show_input_apis->set_value            (config.imgui.show_input_apis);
 
 
-  apis.last_known->set_value                  ((int)config.apis.last_known);
+  apis.last_known->set_value                  (static_cast <int> (config.apis.last_known));
 
 #ifndef _WIN64
   apis.ddraw.hook->set_value                  (config.apis.ddraw.hook);
@@ -3217,7 +3511,7 @@ SK_SaveConfig ( std::wstring name,
 
   input.cursor.manage->set_value              (config.input.cursor.manage);
   input.cursor.keys_activate->set_value       (config.input.cursor.keys_activate);
-  input.cursor.timeout->set_value             ((float)config.input.cursor.timeout / 1000.0f);
+  input.cursor.timeout->set_value             (static_cast <float> (config.input.cursor.timeout) / 1000.0f);
   input.cursor.ui_capture->set_value          (config.input.ui.capture);
   input.cursor.hw_cursor->set_value           (config.input.ui.use_hw_cursor);
   input.cursor.block_invisible->set_value     (config.input.ui.capture_hidden);
@@ -3240,6 +3534,20 @@ SK_SaveConfig ( std::wstring name,
 
   input.gamepad.xinput.placeholders->set_value (placeholder_mask);
   input.gamepad.xinput.ui_slot->set_value      (config.input.gamepad.xinput.ui_slot);
+
+  std::wstring xinput_assign = L"";
+
+  for (int i = 0; i < 4; i++)
+  {
+    xinput_assign += std::to_wstring (
+      config.input.gamepad.xinput.assignment [i]
+    );
+
+    if (i != 3)
+      xinput_assign += L",";
+  }
+
+  input.gamepad.xinput.assignment->set_value (xinput_assign);
 
   input.gamepad.xinput.disable_rumble->set_value (config.input.gamepad.xinput.disable_rumble);
 
@@ -3414,10 +3722,14 @@ SK_SaveConfig ( std::wstring name,
     if ( SK_IsInjected () || ( SK_GetDLLRole () & DLL_ROLE::D3D9    ) ||
                              ( SK_GetDLLRole () & DLL_ROLE::DInput8 ) )
     {
-      render.d3d9.force_d3d9ex->set_value     (config.render.d3d9.force_d3d9ex);
-      render.d3d9.hook_type->set_value        (config.render.d3d9.hook_type);
+      render.d3d9.force_d3d9ex->set_value        (config.render.d3d9.force_d3d9ex);
+      render.d3d9.hook_type->set_value           (config.render.d3d9.hook_type);
+      render.d3d9.enable_texture_mods->set_value (config.textures.d3d9_mod);
     }
   }
+
+  texture.res_root->set_value                   (config.textures.d3d11.res_root);
+  texture.dump_on_load->set_value               (config.textures.dump_on_load);
 
   steam.achievements.sound_file->set_value      (config.steam.achievements.sound_file);
   steam.achievements.play_sound->set_value      (config.steam.achievements.play_sound);
@@ -3453,6 +3765,7 @@ SK_SaveConfig ( std::wstring name,
   );
 
   steam.log.silent->set_value                (config.steam.silent);
+  steam.drm.spoof_BLoggedOn->set_value       (config.steam.spoof_BLoggedOn);
 
   init_delay->set_value                      (config.system.init_delay);
   silent->set_value                          (config.system.silent);
@@ -3526,6 +3839,7 @@ SK_SaveConfig ( std::wstring name,
   input.gamepad.xinput.placeholders->store   ();
   input.gamepad.xinput.disable_rumble->store ();
   input.gamepad.haptic_ui->store             ();
+  input.gamepad.xinput.assignment->store   ();
 
   window.borderless->store                 ();
   window.center->store                     ();
@@ -3608,13 +3922,17 @@ SK_SaveConfig ( std::wstring name,
         ( SK_GetDLLRole () & DLL_ROLE::DInput8 ) ||
         ( SK_GetDLLRole () & DLL_ROLE::D3D9    ) )
     {
-      render.d3d9.force_d3d9ex->store     ();
-      render.d3d9.hook_type->store        ();
+      render.d3d9.force_d3d9ex->store        ();
+      render.d3d9.hook_type->store           ();
+      render.d3d9.enable_texture_mods->store ();
     }
   }
 
   if (render.framerate.refresh_rate != nullptr)
     render.framerate.refresh_rate->store ();
+
+  texture.res_root->store                ();
+  texture.dump_on_load->store            ();
 
   osd.show->store                        ();
   osd.update_method.pump->store          ();
@@ -3651,6 +3969,7 @@ SK_SaveConfig ( std::wstring name,
   steam.system.early_overlay->store          ();
   steam.system.force_load->store             ();
   steam.log.silent->store                    ();
+  steam.drm.spoof_BLoggedOn->store           ();
 
   init_delay->store                      ();
   silent->store                          ();
@@ -3660,8 +3979,15 @@ SK_SaveConfig ( std::wstring name,
   ignore_rtss_delay->set_value           (config.system.ignore_rtss_delay);
   ignore_rtss_delay->store               ();
 
-  handle_crashes->set_value              (config.system.handle_crashes);
-  handle_crashes->store                  ();
+
+  // Don't store this setting at shutdown
+  extern volatile ULONG __SK_DLL_Ending;
+
+  if (! InterlockedExchangeAdd (&__SK_DLL_Ending, 0))
+  {
+    handle_crashes->set_value              (config.system.handle_crashes);
+    handle_crashes->store                  ();
+  }
 
   game_output->set_value                 (config.system.game_output);
   game_output->store                     ();
@@ -4135,6 +4461,8 @@ SK_AppCache_Manager::getConfigPathForAppID (uint32_t uiAppID) const
     path += name;
     path += L"\\";
 
+    SK_StripTrailingSlashesW (path.data ());
+
     MoveFileExW ( original_dir.c_str (),
                     path.c_str       (),
                       MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED );
@@ -4167,4 +4495,28 @@ SK_AppCache_Manager::migrateProfileData (LPVOID)
 {
   // TODO
   return 0;
+}
+
+
+__declspec (dllexport)
+SK_RenderAPI
+__stdcall
+SK_Render_GetAPIHookMask (void)
+{
+  int mask = 0;
+
+#ifndef _WIN64
+  if (config.apis.d3d8.hook)       mask |= static_cast <int> (SK_RenderAPI::D3D8);
+  if (config.apis.ddraw.hook)      mask |= static_cast <int> (SK_RenderAPI::DDraw);
+#endif
+  if (config.apis.d3d9.hook)       mask |= static_cast <int> (SK_RenderAPI::D3D9);
+  if (config.apis.d3d9ex.hook)     mask |= static_cast <int> (SK_RenderAPI::D3D9Ex);
+  if (config.apis.dxgi.d3d11.hook) mask |= static_cast <int> (SK_RenderAPI::D3D11);
+  if (config.apis.OpenGL.hook)     mask |= static_cast <int> (SK_RenderAPI::OpenGL);
+#ifdef _WIN64
+  if (config.apis.Vulkan.hook)     mask |= static_cast <int> (SK_RenderAPI::Vulkan);
+  if (config.apis.dxgi.d3d12.hook) mask |= static_cast <int> (SK_RenderAPI::D3D12);
+#endif
+
+  return (SK_RenderAPI)mask;
 }

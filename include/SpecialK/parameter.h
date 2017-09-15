@@ -23,11 +23,25 @@
 #ifndef __SK__PARAMETER_H__
 #define __SK__PARAMETER_H__
 
-#include "ini.h"
-
 #include <Windows.h>
 #include <vector>
-#include <imgui/imgui.h>
+
+#ifndef IM_VEC2_DEFINED
+#define IM_VEC2_DEFINED
+struct ImVec2
+{
+    float x, y;
+
+    ImVec2 (void)               { x = y = 0.0f;   }
+    ImVec2 (float _x, float _y) { x = _x; y = _y; }
+
+#ifdef IM_VEC2_CLASS_EXTRA          // Define constructor and implicit cast operators in imconfig.h to convert back<>forth from your math types and ImVec2.
+    IM_VEC2_CLASS_EXTRA
+#endif
+};
+#endif
+
+interface iSK_INI;
 
 namespace sk
 {
@@ -42,50 +56,10 @@ public:
   virtual void         set_value_str (std::wstring str) = 0;
 
   // Read value from INI
-  bool load (void)
-  {
-    if (ini != nullptr)
-    {
-      iSK_INISection& section = ini->get_section (ini_section.c_str ());
-
-      if (section.contains_key (ini_key.c_str ()))
-      {
-        set_value_str (section.get_value (ini_key.c_str ()));
-        return true;
-      }
-    }
-
-    return false;
-  }
+  bool load (void);
 
   // Store value in INI
-  bool store (void)
-  {
-    bool ret = false;
-
-    if (ini != nullptr)
-    {
-      iSK_INISection& section = ini->get_section (ini_section.c_str ());
-
-      // If this operation actually creates a section, we need to make sure
-      //   that section has a name!
-      section.name = ini_section;
-
-      if (section.contains_key (ini_key.c_str ()))
-      {
-        section.get_value (ini_key.c_str ()) = get_value_str ();
-        ret = true;
-      }
-
-      // Add this key/value if it doesn't already exist.
-      else {
-        section.add_key_value (ini_key.c_str (), get_value_str ().c_str ());
-        ret = true;// +1;
-      }
-    }
-
-    return ret;
-  }
+  bool store (void);
 
   void register_to_ini (iSK_INI* file, std::wstring section, std::wstring key)
   {
@@ -104,11 +78,11 @@ private:
 template <typename _T>
 class Parameter : public iParameter {
 public:
-  virtual std::wstring get_value_str (void) = 0;
+  virtual std::wstring get_value_str (void) override = 0;
   virtual _T           get_value     (void) = 0;
 
-  virtual void         set_value     (_T val)           = 0;
-  virtual void         set_value_str (std::wstring str) = 0;
+  virtual void         set_value     (_T           val)          = 0;
+  virtual void         set_value_str (std::wstring str) override = 0;
 
 protected:
   _T                       value;
@@ -117,11 +91,11 @@ protected:
 class ParameterInt : public Parameter <int>
 {
 public:
-  std::wstring get_value_str (void);
-  int          get_value     (void);
+  virtual std::wstring get_value_str (void)             override;
+  virtual int          get_value     (void)             override;
 
-  void         set_value     (int val);
-  void         set_value_str (std::wstring str);
+  virtual void         set_value     (int          val) override;
+  virtual void         set_value_str (std::wstring str) override;
 
 protected:
   int value;
@@ -130,11 +104,11 @@ protected:
 class ParameterInt64 : public Parameter <int64_t>
 {
 public:
-  std::wstring get_value_str (void);
-  int64_t      get_value     (void);
+  virtual std::wstring get_value_str (void)             override;
+  virtual int64_t      get_value     (void)             override;
 
-  void         set_value     (int64_t val);
-  void         set_value_str (std::wstring str);
+  virtual void         set_value     (int64_t      val) override;
+  virtual void         set_value_str (std::wstring str) override;
 
 protected:
   int64_t value;
@@ -143,11 +117,11 @@ protected:
 class ParameterBool : public Parameter <bool>
 {
 public:
-  std::wstring get_value_str (void);
-  bool         get_value     (void);
+  virtual std::wstring get_value_str (void)             override;
+  virtual bool         get_value     (void)             override;
 
-  void         set_value     (bool val);
-  void         set_value_str (std::wstring str);
+  virtual void         set_value     (bool         val) override;
+  virtual void         set_value_str (std::wstring str) override;
 
   enum boolean_term_t {
     TrueFalse   = 0,
@@ -164,11 +138,11 @@ protected:
 class ParameterFloat : public Parameter <float>
 {
 public:
-  std::wstring get_value_str (void);
-  float        get_value (void);
+  virtual std::wstring get_value_str (void)             override;
+  virtual float        get_value     (void)             override;
 
-  void         set_value (float val);
-  void         set_value_str (std::wstring str);
+  virtual void         set_value     (float        val) override;
+  virtual void         set_value_str (std::wstring str) override;
 
 protected:
   float value;
@@ -177,11 +151,11 @@ protected:
 class ParameterStringW : public Parameter <std::wstring>
 {
 public:
-  std::wstring get_value_str (void);
-  std::wstring get_value     (void);
+  virtual std::wstring get_value_str (void)             override;
+  virtual std::wstring get_value     (void)             override;
 
-  void         set_value     (std::wstring str);
-  void         set_value_str (std::wstring str);
+  virtual void         set_value     (std::wstring str) override;
+  virtual void         set_value_str (std::wstring str) override;
 
 protected:
   std::wstring value;
@@ -190,11 +164,11 @@ protected:
 class ParameterVec2f : public Parameter <ImVec2>
 {
 public:
-  std::wstring get_value_str (void);
-  ImVec2       get_value     (void);
+  virtual std::wstring get_value_str (void)             override;
+  virtual ImVec2       get_value     (void)             override;
 
-  void         set_value     (ImVec2       val);
-  void         set_value_str (std::wstring str);
+  virtual void         set_value     (ImVec2       val) override;
+  virtual void         set_value_str (std::wstring str) override;
 
 protected:
   ImVec2 value;

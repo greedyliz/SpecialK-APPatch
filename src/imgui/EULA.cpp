@@ -19,8 +19,6 @@
  *
 **/
 
-#define _CRT_SECURE_NO_WARNINGS
-
 #pragma once
 
 #include <Windows.h>
@@ -51,8 +49,8 @@ SK_GetLicenseText (SHORT id)
     // There's no forseeable reason this would be NULL, but the Application Verifier won't shutup about it.
     if (! license_ref) return std::string ("");
 
-    char* res_data =
-      (char *)malloc (res_size + 1);
+    auto* res_data =
+      static_cast <char *> (malloc (res_size + 1));
 
     if (res_data != nullptr)
     {
@@ -87,8 +85,6 @@ SK_ImGui_DrawEULA_PlugIn (LPVOID reserved)
     ImGui::GetIO ();
 
   DBG_UNREFERENCED_LOCAL_VARIABLE (io);
-
-  return;
 }
 
 extern std::wstring
@@ -99,9 +95,6 @@ void
 __stdcall
 SK_ImGui_DrawEULA (LPVOID reserved)
 {
-  extern uint32_t __stdcall SK_Steam_PiratesAhoy (void);
-  extern uint32_t __stdcall SK_SteamAPI_AppID    (void);
-
   ImGuiIO& io =
     ImGui::GetIO ();
 
@@ -136,7 +129,7 @@ SK_ImGui_DrawEULA (LPVOID reserved)
   const  float font_size_multiline = font_size + ImGui::GetStyle ().ItemSpacing.y + ImGui::GetStyle ().ItemInnerSpacing.y;
 
 
-  ImGui::SetNextWindowPosCenter (ImGuiSetCond_Always);
+  ImGui::SetNextWindowPosCenter (ImGuiSetCond_Appearing);
   ImGui::SetNextWindowFocus     ();
 
   if (ImGui::BeginPopupModal (szTitle, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_ShowBorders))
@@ -153,9 +146,6 @@ SK_ImGui_DrawEULA (LPVOID reserved)
     //  ImGui::PopStyleColor ();
     //  goto END_POPUP;
     //}
-
-    bool pirate = ( SK_SteamAPI_AppID    () != 0 && 
-                    SK_Steam_PiratesAhoy () != 0x0 );
 
 
     ImGui::BeginGroup ();

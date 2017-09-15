@@ -18,7 +18,6 @@
  *   If not, see <http://www.gnu.org/licenses/>.
  *
 **/
-#define _CRT_SECURE_NO_WARNINGS
 
 #include <Windows.h>
 
@@ -50,8 +49,8 @@ SK_Get7ZFileContents (const wchar_t* wszArchive)
 {
   CrcGenerateTable ();
 
-  CFileInStream arc_stream;
-  CLookToRead   look_stream;
+  CFileInStream arc_stream  = { };
+  CLookToRead   look_stream = { };
 
   FileInStream_CreateVTable (&arc_stream);
   LookToRead_CreateVTable   (&look_stream, False);
@@ -75,7 +74,7 @@ SK_Get7ZFileContents (const wchar_t* wszArchive)
     return files;
   }
 
-  CSzArEx       arc;
+  CSzArEx       arc = { };
   SzArEx_Init (&arc);
 
   if ( SzArEx_Open ( &arc,

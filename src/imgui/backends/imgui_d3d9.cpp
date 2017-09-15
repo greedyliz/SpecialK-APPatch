@@ -6,10 +6,9 @@
 // If you are new to ImGui, see examples/README.txt and documentation at the top of imgui.cpp.
 // https://github.com/ocornut/imgui
 
-#define NOMINMAX
-
 #include <imgui/imgui.h>
 #include <imgui/backends/imgui_d3d9.h>
+#include <SpecialK/d3d9_backend.h>
 #include <SpecialK/framerate.h>
 
 // DirectX
@@ -46,6 +45,7 @@ struct CUSTOMVERTEX
 // This is the main rendering function that you have to implement and provide to ImGui (via setting up 'RenderDrawListsFn' in the ImGuiIO structure)
 // If text or lines are blurry when integrating ImGui in your engine:
 // - in your Render function, try translating your projection matrix by (0.5f,0.5f) or (0.375f,0.375f)
+IMGUI_API
 void
 ImGui_ImplDX9_RenderDrawLists (ImDrawData* draw_data)
 {
@@ -399,7 +399,8 @@ ImGui_ImplDX9_CreateFontsTexture (void)
   // Upload texture to graphics system
   g_FontTexture = nullptr;
 
-  if ( g_pd3dDevice->CreateTexture ( width, height,
+  extern CreateTexture_pfn D3D9CreateTexture_Original;
+  if ( D3D9CreateTexture_Original ( g_pd3dDevice, width, height,
                                        1, D3DUSAGE_DYNAMIC,
                                           D3DFMT_A8R8G8B8,
                                           D3DPOOL_DEFAULT,
@@ -444,6 +445,10 @@ ImGui_ImplDX9_CreateDeviceObjects (void)
 void
 ImGui_ImplDX9_InvalidateDeviceObjects (D3DPRESENT_PARAMETERS* pparams)
 {
+  extern void
+  SK_ImGui_ResetExternal (void);
+  SK_ImGui_ResetExternal ();
+
   if (! g_pd3dDevice)
     return;
 
@@ -470,17 +475,17 @@ ImGui_ImplDX9_InvalidateDeviceObjects (D3DPRESENT_PARAMETERS* pparams)
   g_FontTexture = NULL;
 
 
-  float width  = 0.0f,
-        height = 0.0f;
-
   if ( pparams != nullptr )
   {
+    float width  = 0.0f,
+          height = 0.0f;
+
     width  = static_cast <float> (pparams->BackBufferWidth);
     height = static_cast <float> (pparams->BackBufferHeight);
-  }
 
-  io.DisplayFramebufferScale = ImVec2 ( width, height );
-  io.DisplaySize             = ImVec2 ( width, height );
+    io.DisplayFramebufferScale = ImVec2 ( width, height );
+    io.DisplaySize             = ImVec2 ( width, height );
+  }
 }
 
 #include <SpecialK/window.h>

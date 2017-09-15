@@ -23,7 +23,6 @@
 #define __SK__WINDOW_H__
 
 #include <Windows.h>
-#include <SpecialK/config.h>
 
 #undef GetWindowLong
 #undef GetWindowLongPtr
@@ -50,131 +49,128 @@ bool          SK_DiscontEpsilon   (int x1, int x2, int tolerance);
 DWORD __stdcall SK_RealizeForegroundWindow (HWND hWndForeground);
 HWND  __stdcall SK_GetGameWindow           (void);
 
-typedef BOOL
-(WINAPI *MoveWindow_pfn)(
-    _In_ HWND hWnd,
-    _In_ int  X,
-    _In_ int  Y,
-    _In_ int  nWidth,
-    _In_ int  nHeight,
-    _In_ BOOL bRedraw );
+using MoveWindow_pfn         = BOOL (WINAPI *)(
+  _In_ HWND hWnd,
+  _In_ int  X,
+  _In_ int  Y,
+  _In_ int  nWidth,
+  _In_ int  nHeight,
+  _In_ BOOL bRedraw
+);
 
-typedef BOOL (WINAPI *SetWindowPlacement_pfn)(
-  _In_       HWND            hWnd,
+using SetWindowPlacement_pfn = BOOL (WINAPI *)(
+  _In_       HWND              hWnd,
   _In_ const WINDOWPLACEMENT *lpwndpl
 );
 
-typedef BOOL
-(WINAPI *SetWindowPos_pfn)(
-    _In_     HWND hWnd,
-    _In_opt_ HWND hWndInsertAfter,
-    _In_     int  X,
-    _In_     int  Y,
-    _In_     int  cx,
-    _In_     int  cy,
-    _In_     UINT uFlags );
+using SetWindowPos_pfn       = BOOL (WINAPI *)(
+  _In_     HWND hWnd,
+  _In_opt_ HWND hWndInsertAfter,
+  _In_     int  X,
+  _In_     int  Y,
+  _In_     int  cx,
+  _In_     int  cy,
+  _In_     UINT uFlags
+);
 
-typedef LONG
-(WINAPI *SetWindowLong_pfn)(
-    _In_ HWND hWnd,
-    _In_ int  nIndex,
-    _In_ LONG dwNewLong);
+using SetWindowLong_pfn      = LONG (WINAPI *)(
+  _In_ HWND hWnd,
+  _In_ int  nIndex,
+  _In_ LONG dwNewLong
+);
 
-typedef LONG_PTR
-(WINAPI *SetWindowLongPtr_pfn)(
-    _In_ HWND     hWnd,
-    _In_ int      nIndex,
-    _In_ LONG_PTR dwNewLong);
+using SetWindowLongPtr_pfn   = LONG_PTR (WINAPI *)(
+  _In_ HWND     hWnd,
+  _In_ int      nIndex,
+  _In_ LONG_PTR dwNewLong
+);
 
-typedef LONG
-(WINAPI *GetWindowLong_pfn)(
+using GetWindowLong_pfn      = LONG (WINAPI *)(
   _In_ HWND hWnd,
   _In_ int  nIndex
 );
 
-typedef LONG_PTR
-(WINAPI *GetWindowLongPtr_pfn)(
+using GetWindowLongPtr_pfn   = LONG_PTR (WINAPI *)(
   _In_ HWND hWnd,
   _In_ int  nIndex
 );
 
 
-typedef BOOL
-(WINAPI *AdjustWindowRect_pfn)(
-    _Inout_ LPRECT lpRect,
-    _In_    DWORD  dwStyle,
-    _In_    BOOL   bMenu );
+using AdjustWindowRect_pfn   = BOOL (WINAPI *)(
+  _Inout_ LPRECT lpRect,
+  _In_    DWORD  dwStyle,
+  _In_    BOOL   bMenu
+);
 
-typedef BOOL
-(WINAPI *AdjustWindowRectEx_pfn)(
-    _Inout_ LPRECT lpRect,
-    _In_    DWORD  dwStyle,
-    _In_    BOOL   bMenu,
-    _In_    DWORD  dwExStyle );
+using AdjustWindowRectEx_pfn = BOOL (WINAPI *)(
+  _Inout_ LPRECT lpRect,
+  _In_    DWORD  dwStyle,
+  _In_    BOOL   bMenu,
+  _In_    DWORD  dwExStyle
+);
 
-typedef int
-(WINAPI *GetSystemMetrics_pfn)(
+using GetSystemMetrics_pfn = int (WINAPI *)(
   _In_ int nIndex
 );
 
-typedef BOOL
-(WINAPI *GetWindowRect_pfn)(
+using GetWindowRect_pfn    = BOOL (WINAPI *)(
   HWND, 
-  LPRECT );
-typedef BOOL
-(WINAPI *GetClientRect_pfn)(
+  LPRECT
+);
+using GetClientRect_pfn    = BOOL (WINAPI *)(
   HWND,
-  LPRECT );
-
-typedef LRESULT (WINAPI *DefWindowProc_pfn)(
-    _In_ HWND   hWnd,
-    _In_ UINT   Msg,
-    _In_ WPARAM wParam,
-    _In_ LPARAM lParam
+  LPRECT
 );
 
-typedef LRESULT (WINAPI *CallWindowProc_pfn)(
-    _In_ WNDPROC lpPrevWndFunc,
-    _In_ HWND    hWnd,
-    _In_ UINT    Msg,
-    _In_ WPARAM  wParam,
-    _In_ LPARAM  lParam
+using DefWindowProc_pfn    = LRESULT (WINAPI *)(
+  _In_ HWND   hWnd,
+  _In_ UINT   Msg,
+  _In_ WPARAM wParam,
+  _In_ LPARAM lParam
 );
 
-typedef LONG_PTR (WINAPI *GetWindowLongPtr_pfn)(
-    _In_ HWND hWnd,
-    _In_ int  nIndex
+using CallWindowProc_pfn   = LRESULT (WINAPI *)(
+  _In_ WNDPROC lpPrevWndFunc,
+  _In_ HWND    hWnd,
+  _In_ UINT    Msg,
+  _In_ WPARAM  wParam,
+  _In_ LPARAM  lParam
+);
+
+using GetWindowLongPtr_pfn = LONG_PTR (WINAPI *)(
+  _In_ HWND hWnd,
+  _In_ int  nIndex
 );
 
 
-typedef BOOL
-(WINAPI *ClipCursor_pfn)(
-    _In_opt_ const RECT *lpRect );
+using ClipCursor_pfn       = BOOL (WINAPI *)(
+  _In_opt_ const RECT *lpRect
+);
 
-typedef BOOL
-(WINAPI *GetCursorPos_pfn)(
-  _Out_ LPPOINT lpPoint );
+using GetCursorPos_pfn     = BOOL (WINAPI *)(
+  _Out_ LPPOINT lpPoint
+);
 
-typedef BOOL
-(WINAPI *GetCursorInfo_pfn)(
-  _Inout_ PCURSORINFO pci );
+using GetCursorInfo_pfn    = BOOL (WINAPI *)(
+  _Inout_ PCURSORINFO pci
+);
 
 
-typedef SHORT (WINAPI *GetAsyncKeyState_pfn)(
+using GetAsyncKeyState_pfn = SHORT (WINAPI *)(
   _In_ int vKey
 );
 
-typedef SHORT (WINAPI *GetKeyState_pfn)(
+using GetKeyState_pfn      = SHORT (WINAPI *)(
   _In_ int nVirtKey
 );
 
-typedef BOOL (WINAPI *RegisterRawInputDevices_pfn)(
+using RegisterRawInputDevices_pfn = BOOL (WINAPI *)(
   _In_ PCRAWINPUTDEVICE pRawInputDevices,
   _In_ UINT             uiNumDevices,
   _In_ UINT             cbSize
 );
 
-typedef UINT (WINAPI *GetRawInputData_pfn)(
+using GetRawInputData_pfn   = UINT (WINAPI *)(
   _In_      HRAWINPUT hRawInput,
   _In_      UINT      uiCommand,
   _Out_opt_ LPVOID    pData,
@@ -182,26 +178,26 @@ typedef UINT (WINAPI *GetRawInputData_pfn)(
   _In_      UINT      cbSizeHeader
 );
 
-typedef UINT (WINAPI *GetRawInputBuffer_pfn)(
-                               _Out_opt_ PRAWINPUT pData,
-                               _Inout_   PUINT     pcbSize,
-                               _In_      UINT      cbSizeHeader);
-typedef BOOL (WINAPI *GetKeyboardState_pfn)(PBYTE lpKeyState);
+using GetRawInputBuffer_pfn = UINT (WINAPI *)(
+  _Out_opt_ PRAWINPUT pData,
+  _Inout_   PUINT     pcbSize,
+  _In_      UINT      cbSizeHeader
+);
+using GetKeyboardState_pfn  = BOOL (WINAPI *)(PBYTE lpKeyState);
 
 
-typedef BOOL (WINAPI *SetCursorPos_pfn)
-(
+using SetCursorPos_pfn      = BOOL (WINAPI *)(
   _In_ int X,
   _In_ int Y
 );
 
-typedef UINT (WINAPI *SendInput_pfn)(
+using SendInput_pfn         = UINT (WINAPI *)(
   _In_ UINT    nInputs,
   _In_ LPINPUT pInputs,
   _In_ int     cbSize
 );
 
-typedef VOID(WINAPI *mouse_event_pfn)(
+using mouse_event_pfn       = void (WINAPI *)(
   _In_ DWORD     dwFlags,
   _In_ DWORD     dx,
   _In_ DWORD     dy,
@@ -243,7 +239,7 @@ extern RegisterRawInputDevices_pfn RegisterRawInputDevices_Original;
 struct sk_window_s {
   bool       unicode          = false;
 
-  HWND       hWnd             = 0x00;
+  HWND       hWnd             = nullptr;
   WNDPROC    WndProc_Original = nullptr;
   WNDPROC    RawProc_Original = nullptr;
 
@@ -316,80 +312,8 @@ struct sk_window_s {
     y = (actual.client.bottom - actual.client.top);
   }
 
-  bool    needsCoordTransform (void)
-  {
-    if (! config.window.res.override.fix_mouse)
-      return false;
-
-    bool dynamic_window =
-      (config.window.borderless /*&& config.window.fullscreen*/);
-
-    if (! dynamic_window)
-      return false;
-
-    return (! coord_remap.identical);
-  }
-
-  void updateDims (void)
-  {
-    if (config.window.borderless && config.window.fullscreen)
-    {
-      HMONITOR hMonitor =
-      MonitorFromWindow ( hWnd,
-                            MONITOR_DEFAULTTONEAREST );
-
-      MONITORINFO mi = { 0 };
-      mi.cbSize      = sizeof (mi);
-
-      GetMonitorInfo (hMonitor, &mi);
-
-      actual.window = mi.rcMonitor;
-
-      actual.client.left   = 0;
-      actual.client.right  = actual.window.right - actual.window.left;
-      actual.client.top    = 0;
-      actual.client.bottom = actual.window.bottom - actual.window.top;
-    }
-
-    long game_width   = (game.client.right   - game.client.left);
-    long window_width = (actual.client.right - actual.client.left);
-
-    long game_height   = (game.client.bottom   - game.client.top);
-    long window_height = (actual.client.bottom - actual.client.top);
-
-    bool resized =
-      (game_width != window_width || game_height != window_height);
-
-    bool moved =
-      ( game.window.left != actual.window.left ||
-        game.window.top  != actual.window.top );
-
-    if (resized || moved) {
-      coord_remap.identical = false;
-
-      coord_remap.scale.x =
-        (float)window_width  / (float)game_width;
-      coord_remap.scale.y =
-        (float)window_height / (float)game_height;
-
-      coord_remap.offset.x =
-        (float)(actual.window.left + actual.client.left) -
-        (float)(game.window.left   + game.client.left);
-      coord_remap.offset.y =
-        (float)(actual.window.top + actual.client.top) -
-        (float)(game.window.top   + game.client.top);
-    }
-
-    else {
-      coord_remap.identical = true;
-
-      coord_remap.offset.x  = 0.0f;
-      coord_remap.offset.y  = 0.0f;
-
-      coord_remap.scale.x   = 0.0f;
-      coord_remap.scale.y   = 0.0f;
-    }
-  }
+  bool    needsCoordTransform (void);
+  void    updateDims          (void);
 
   SetWindowLongPtr_pfn SetWindowLongPtr = nullptr;
   GetWindowLongPtr_pfn GetWindowLongPtr = nullptr;
@@ -402,17 +326,17 @@ struct sk_window_s {
     _In_ LPARAM lParam
   );
 
-  LRESULT CallProc      (
+  LRESULT CallProc (
     _In_ HWND    hWnd_,
     _In_ UINT    Msg,
     _In_ WPARAM  wParam,
-    _In_ LPARAM  lParam );
+    _In_ LPARAM  lParam
+  );
 
   bool hooked = false;
 };
 
 extern sk_window_s game_window;
-
 
 struct window_t {
   DWORD proc_id;

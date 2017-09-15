@@ -18,7 +18,6 @@
  *   If not, see <http://www.gnu.org/licenses/>.
  *
 **/
-#define NOMINMAX
 
 #include <SpecialK/widgets/widget.h>
 #include <SpecialK/gpu_monitor.h>
@@ -42,7 +41,7 @@ public:
     setAutoFit (true).setDockingPoint (DockAnchor::West).setClickThrough (true);
   };
 
-  void run (void)
+  virtual void run (void) override
   {
     if (! ( static_cast <int> (SK_GetCurrentRenderBackend ().api) &
             static_cast <int> (SK_RenderAPI::D3D11              ) ) )
@@ -81,7 +80,7 @@ public:
     }
   }
 
-  void draw (void)
+  virtual void draw (void) override
   {
     if (! ( static_cast <int> (SK_GetCurrentRenderBackend ().api) &
             static_cast <int> (SK_RenderAPI::D3D11              ) ) )
@@ -90,9 +89,7 @@ public:
       return;
     }
 
-    ImGuiIO& io (ImGui::GetIO ( ));
-
-    const  float font_size           =             ImGui::GetFont  ()->FontSize                        * io.FontGlobalScale;
+    const  float font_size           =             ImGui::GetFont  ()->FontSize;//                        * scale;
     const  float font_size_multiline = font_size + ImGui::GetStyle ().ItemSpacing.y + ImGui::GetStyle ().ItemInnerSpacing.y;
 
     char szAvg  [512] = { };
@@ -318,7 +315,7 @@ public:
     }
   }
 
-  void OnConfig (ConfigEvent event)
+  virtual void OnConfig (ConfigEvent event) override
   {
     switch (event)
     {
@@ -338,28 +335,28 @@ private:
 
   struct {
     struct {
-      SK_ImGui_DataHistory <float, 600> verts_invoked;
-      SK_ImGui_DataHistory <float, 600> verts_input;
-      SK_ImGui_DataHistory <float, 600> prims_input;
-      SK_ImGui_DataHistory <float, 600> gs_invokeed;
-      SK_ImGui_DataHistory <float, 600> gs_output;
+      SK_Stat_DataHistory <float, 600> verts_invoked;
+      SK_Stat_DataHistory <float, 600> verts_input;
+      SK_Stat_DataHistory <float, 600> prims_input;
+      SK_Stat_DataHistory <float, 600> gs_invokeed;
+      SK_Stat_DataHistory <float, 600> gs_output;
     } vertex;
 
     struct {
-      SK_ImGui_DataHistory <float, 600> hull;
-      SK_ImGui_DataHistory <float, 600> domain;
+      SK_Stat_DataHistory <float, 600> hull;
+      SK_Stat_DataHistory <float, 600> domain;
     } tessellation;
 
     struct {
-      SK_ImGui_DataHistory <float, 600> fill_ratio;
-      SK_ImGui_DataHistory <float, 600> triangles_submitted;
-      SK_ImGui_DataHistory <float, 600> triangles_filled;
-      SK_ImGui_DataHistory <float, 600> pixels_filled;
+      SK_Stat_DataHistory <float, 600> fill_ratio;
+      SK_Stat_DataHistory <float, 600> triangles_submitted;
+      SK_Stat_DataHistory <float, 600> triangles_filled;
+      SK_Stat_DataHistory <float, 600> pixels_filled;
     } raster;
 
     struct
     {
-      SK_ImGui_DataHistory <float, 600> dispatches;
+      SK_Stat_DataHistory <float, 600> dispatches;
     } compute;
   } pipeline;
 } __d3d11_pipeline__;

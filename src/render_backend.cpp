@@ -23,10 +23,13 @@
 
 #include <SpecialK/render_backend.h>
 #include <SpecialK/dxgi_backend.h>
+#include <SpecialK/nvapi.h>
+#include <SpecialK/utility.h>
 #include <SpecialK/config.h>
 #include <SpecialK/core.h>
 #include <SpecialK/command.h>
 #include <SpecialK/framerate.h>
+#include <SpecialK/log.h>
 #include <SpecialK/import.h>
 
 #include <atlbase.h>
@@ -42,8 +45,6 @@ SK_GetCurrentRenderBackend (void)
 {
   return __SK_RBkEnd;
 }
-
-#include <SpecialK/log.h>
 
 extern void WINAPI SK_HookGL     (void);
 extern void WINAPI SK_HookVulkan (void);
@@ -82,10 +83,15 @@ SK_InitRenderBackends (void)
                                            new SK_IVarStub <bool> (&config.apis.OpenGL.hook ) );
 }
 
+#include <SpecialK/D3D9/texmgr.h>
+#include <SpecialK/hooks.h>
+
+#define D3D9_TEXTURE_MOD
+
 void
 SK_BootD3D9 (void)
 {
-  while (backend_dll == 0)
+  while (backend_dll == nullptr)
   {
     dll_log.Log (L"[API Detect]  *** Delaying VERY EARLY DLL Usage (d3d9.dll) -- tid=%x ***", GetCurrentThreadId ());
     SleepEx (500UL, TRUE);
@@ -95,6 +101,14 @@ SK_BootD3D9 (void)
 
   if (InterlockedCompareExchange (&__booted, TRUE, FALSE))
     return;
+
+  void SK_D3D9_InitShaderModTools (void);
+       SK_D3D9_InitShaderModTools ( );
+
+  if (config.textures.d3d9_mod)
+  {
+    SK::D3D9::tex_mgr.Init ();
+  }
 
   // Establish the minimal set of APIs necessary to work as d3d9.dll
   if (SK_GetDLLRole () == DLL_ROLE::D3D9)
@@ -122,13 +136,18 @@ SK_BootD3D9 (void)
   }
 
   SK_HookD3D9 ();
+
+  if (config.textures.d3d9_mod)
+  {
+    SK::D3D9::tex_mgr.Hook ();
+  }
 }
 
 #ifndef _WIN64
 void
 SK_BootD3D8 (void)
 {
-  while (backend_dll == 0)
+  while (backend_dll == nullptr)
   {
     dll_log.Log (L"[API Detect]  *** Delaying VERY EARLY DLL Usage (d3d8.dll) -- tid=%x ***", GetCurrentThreadId ());
     SleepEx (500UL, TRUE);
@@ -160,7 +179,7 @@ SK_BootD3D8 (void)
 void
 SK_BootDDraw (void)
 {
-  while (backend_dll == 0)
+  while (backend_dll == nullptr)
   {
     dll_log.Log (L"[API Detect]  *** Delaying VERY EARLY DLL Usage (ddraw.dll) -- tid=%x ***", GetCurrentThreadId ());
     SleepEx (500UL, TRUE);
@@ -193,7 +212,7 @@ SK_BootDDraw (void)
 void
 SK_BootDXGI (void)
 {
-  while (backend_dll == 0)
+  while (backend_dll == nullptr)
   {
     dll_log.Log (L"[API Detect]  *** Delaying VERY EARLY DLL Usage (dxgi.dll) -- tid=%x ***", GetCurrentThreadId ());
     SleepEx (500UL, TRUE);
@@ -238,7 +257,7 @@ SK_BootDXGI (void)
 void
 SK_BootOpenGL (void)
 {
-  while (backend_dll == 0)
+  while (backend_dll == nullptr)
   {
     dll_log.Log (L"[API Detect]  *** Delaying VERY EARLY DLL Usage (OpenGL32.dll) -- tid=%x ***", GetCurrentThreadId ());
     SleepEx (500UL, TRUE);
@@ -310,7 +329,7 @@ SK_RenderBackend_V2::gsync_s::update (void)
 
   if ( rb.device    == nullptr ||
        rb.swapchain == nullptr ||
-       rb.surface   == 0 )
+       rb.surface   == nullptr )
   {
     last_checked = timeGetTime ();
     active       = false;
@@ -354,7 +373,7 @@ SK_RenderBackend_V2::gsync_s::update (void)
     // DO NOT hold onto this. NVAPI does not explain how NVDX handles work, but
     //   we can generally assume their lifetime is only as long as the D3D resource
     //     they identify.
-    rb.surface = 0;
+    rb.surface = nullptr;
   }
 }
 
@@ -365,7 +384,7 @@ SK_RenderBackendUtil_IsFullscreen (void)
   SK_RenderBackend& rb =
     SK_GetCurrentRenderBackend ();
 
-  if ((int)rb.api & (int)SK_RenderAPI::D3D11)
+  if (static_cast <int> (rb.api) & static_cast <int> (SK_RenderAPI::D3D11))
   {
     CComPtr <IDXGISwapChain> pSwapChain = nullptr;
     BOOL                     fullscreen = rb.fullscreen_exclusive;
@@ -378,7 +397,7 @@ SK_RenderBackendUtil_IsFullscreen (void)
     return true;//rb.fullscreen_exclusive;
   }
 
-  if ((int)rb.api & (int)SK_RenderAPI::D3D9)
+  if (static_cast <int> (rb.api) & static_cast <int> (SK_RenderAPI::D3D9))
   {
     CComPtr <IDirect3DSwapChain9> pSwapChain = nullptr;
 
@@ -408,12 +427,12 @@ SK_RenderBackend_V2::requestFullscreenMode (bool override)
 
   if (! fullscreen_exclusive)
   {
-    if ((int)api & (int)SK_RenderAPI::D3D9)
+    if (static_cast <int> (api) & static_cast <int> (SK_RenderAPI::D3D9))
     {
       SK_D3D9_TriggerReset (true);
     }
 
-    else if ((int)api & (int)SK_RenderAPI::D3D11)
+    else if (static_cast <int> (api) & static_cast <int> (SK_RenderAPI::D3D11))
     {
       CComPtr <IDXGISwapChain> pSwapChain = nullptr;
       swapchain->QueryInterface <IDXGISwapChain> (&pSwapChain);
@@ -422,7 +441,7 @@ SK_RenderBackend_V2::requestFullscreenMode (bool override)
     }
   }
 
-  if ((int)api & (int)SK_RenderAPI::D3D11)
+  if (static_cast <int> (api) & static_cast <int> (SK_RenderAPI::D3D11))
   {
     DXGI_SWAP_CHAIN_DESC swap_desc;
 
@@ -455,12 +474,12 @@ SK_RenderBackend_V2::requestWindowedMode (bool override)
 
   if (fullscreen_exclusive)
   {
-    if ((int)api & (int)SK_RenderAPI::D3D9)
+    if (static_cast <int> (api) & static_cast <int> (SK_RenderAPI::D3D9))
     {
       SK_D3D9_TriggerReset (true);
     }
 
-    else if ((int)api & (int)SK_RenderAPI::D3D11)
+    else if (static_cast <int> (api) & static_cast <int> (SK_RenderAPI::D3D11))
     {
       CComPtr <IDXGISwapChain> pSwapChain = nullptr;
       swapchain->QueryInterface <IDXGISwapChain> (&pSwapChain);
@@ -522,3 +541,21 @@ SK_RenderBackend_V2::~SK_RenderBackend_V2 (void)
 
 reset_stage_e         trigger_reset       (reset_stage_e::Clear);
 mode_change_request_e request_mode_change (mode_change_request_e::None);
+
+
+
+__declspec (dllexport)
+IUnknown*
+__stdcall
+SK_Render_GetDevice (void)
+{
+  return SK_GetCurrentRenderBackend ().device;
+}
+
+__declspec (dllexport)
+IUnknown*
+__stdcall
+SK_Render_GetSwapChain (void)
+{
+  return SK_GetCurrentRenderBackend ().swapchain;
+}

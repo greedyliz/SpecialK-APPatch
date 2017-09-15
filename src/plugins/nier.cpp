@@ -24,8 +24,6 @@
 // DEALINGS IN THE SOFTWARE.
 //
 
-#define _CRT_SECURE_NO_WARNINGS
-
 #include <SpecialK/dxgi_backend.h>
 #include <SpecialK/config.h>
 #include <SpecialK/command.h>
@@ -51,7 +49,7 @@
 #include <SpecialK/plugin/nier.h>
 
 
-#define FAR_VERSION_NUM L"0.7.0.12"
+#define FAR_VERSION_NUM L"0.7.0.13"
 #define FAR_VERSION_STR L"FAR v " FAR_VERSION_NUM
 
 // Block until update finishes, otherwise the update dialog
@@ -271,8 +269,8 @@ SK_FAR_CreateBuffer (
     //
     if (pInitialData != nullptr && pInitialData->pSysMem != nullptr)
     {
-      far_light_volume_s* lights =
-        (far_light_volume_s *)pInitialData->pSysMem;
+      auto* lights =
+        static_const_cast <far_light_volume_s *, void *> (pInitialData->pSysMem);
 
       static far_light_volume_s new_lights [128];
 
@@ -424,7 +422,7 @@ SK_FAR_SetLimiterWait (SK_FAR_WaitBehavior behavior)
   {
     init = true;
 
-    if ( (psleep = (uint8_t *)SK_Scan ( sleep_wait, 6, nullptr )) == nullptr )
+    if ( (psleep = static_cast <uint8_t *> (SK_ScanAligned ( sleep_wait, 6, nullptr, 2 ))) == nullptr )
     {
       dll_log.Log (L"[ FARLimit ]  Could not locate Framerate Limiter Sleep Addr.");
     }
@@ -439,7 +437,7 @@ SK_FAR_SetLimiterWait (SK_FAR_WaitBehavior behavior)
       uint8_t tstep0      [] = { 0x73, 0x1C, 0xC7, 0x05, 0x00, 0x00 };
       uint8_t tstep0_mask [] = { 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00 };
 
-      pmin_tstep = static_cast <uint8_t *> (SK_Scan ( tstep0, sizeof tstep0, tstep0_mask ));
+      pmin_tstep = static_cast <uint8_t *> (SK_ScanAligned ( tstep0, sizeof tstep0, tstep0_mask, 4 ));
       pmax_tstep = pmin_tstep + 0x2c;
 
       dll_log.Log (L"[ FARLimit ]  Scanned Framerate Limiter TStepMin Addr.: 0x%p", pmin_tstep);
@@ -708,9 +706,9 @@ SK_FAR_OSD_Disclaimer (LPVOID user)
 static SK_PluginKeyPress_pfn SK_PluginKeyPress_Original;
 
 #define SK_MakeKeyMask(vKey,ctrl,shift,alt) \
-  (UINT)((vKey) | (((ctrl) != 0) <<  9) |   \
-                  (((shift)!= 0) << 10) |   \
-                  (((alt)  != 0) << 11))
+  static_cast <UINT>((vKey) | (((ctrl) != 0) <<  9) |   \
+                              (((shift)!= 0) << 10) |   \
+                              (((alt)  != 0) << 11))
 
 #define SK_ControlShiftKey(vKey) SK_MakeKeyMask ((vKey), true, true, false)
 
@@ -718,22 +716,22 @@ void
 CALLBACK
 SK_FAR_PluginKeyPress (BOOL Control, BOOL Shift, BOOL Alt, BYTE vkCode)
 {
-  UINT uiMaskedKeyCode =
+  auto uiMaskedKeyCode =
     SK_MakeKeyMask (vkCode, Control, Shift, Alt);
 
-  const UINT uiHudlessMask =
+  const auto uiHudlessMask =
     SK_MakeKeyMask ( __FAR_HUDLESS.keybind.vKey,  __FAR_HUDLESS.keybind.ctrl,
                      __FAR_HUDLESS.keybind.shift, __FAR_HUDLESS.keybind.alt );
 
-  const UINT uiLockCenterMask =
+  const auto uiLockCenterMask =
     SK_MakeKeyMask ( far_cam.center_binding.vKey,  far_cam.center_binding.ctrl,
                      far_cam.center_binding.shift, far_cam.center_binding.alt );
 
-  const UINT uiLockFocusMask =
+  const auto uiLockFocusMask =
     SK_MakeKeyMask ( far_cam.focus_binding.vKey,  far_cam.focus_binding.ctrl,
                      far_cam.focus_binding.shift, far_cam.focus_binding.alt );
 
-  const UINT uiToggleFreelookMask =
+  const auto uiToggleFreelookMask =
     SK_MakeKeyMask ( far_cam.freelook_binding.vKey,  far_cam.freelook_binding.ctrl,
                      far_cam.freelook_binding.shift, far_cam.freelook_binding.alt );
 
@@ -828,7 +826,7 @@ SK_FAR_PresentFirstFrame (IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Fl
     SK_CreateFuncHook (      L"SK_PluginKeyPress",
                                SK_PluginKeyPress,
                                SK_FAR_PluginKeyPress,
- reinterpret_cast <LPVOID *> (&SK_PluginKeyPress_Original) );
+      static_cast_p2p <void> (&SK_PluginKeyPress_Original) );
     SK_EnableHook        (     SK_PluginKeyPress           );
   }
 
@@ -1430,37 +1428,37 @@ SK_FAR_InitPlugin (void)
   SK_CreateFuncHook (       L"ID3D11Device::CreateBuffer",
                                D3D11Dev_CreateBuffer_Override,
                                  SK_FAR_CreateBuffer,
-reinterpret_cast <LPVOID *> (&_D3D11Dev_CreateBuffer_Original) );
+     static_cast_p2p <void> (&_D3D11Dev_CreateBuffer_Original) );
   MH_QueueEnableHook (         D3D11Dev_CreateBuffer_Override  );
 
   SK_CreateFuncHook (       L"ID3D11Device::CreateShaderResourceView",
                                D3D11Dev_CreateShaderResourceView_Override,
                                  SK_FAR_CreateShaderResourceView,
-reinterpret_cast <LPVOID *> (&_D3D11Dev_CreateShaderResourceView_Original) );
+     static_cast_p2p <void> (&_D3D11Dev_CreateShaderResourceView_Original) );
   MH_QueueEnableHook (         D3D11Dev_CreateShaderResourceView_Override  );
 
   SK_CreateFuncHook (       L"ID3D11Device::CreateTexture2D",
                                D3D11Dev_CreateTexture2D_Override,
                                  SK_FAR_CreateTexture2D,
-reinterpret_cast <LPVOID *> (&_D3D11Dev_CreateTexture2D_Original) );
+     static_cast_p2p <void> (&_D3D11Dev_CreateTexture2D_Original) );
   MH_QueueEnableHook (         D3D11Dev_CreateTexture2D_Override  );
 
   SK_CreateFuncHook (       L"ID3D11DeviceContext::Draw",
                                D3D11_Draw_Override,
                               SK_FAR_Draw,
-reinterpret_cast <LPVOID *> (&_D3D11_Draw_Original) );
+     static_cast_p2p <void> (&_D3D11_Draw_Original) );
   MH_QueueEnableHook (         D3D11_Draw_Override  );
 
   SK_CreateFuncHook (       L"ID3D11DeviceContext::DrawIndexed",
                                D3D11_DrawIndexed_Override,
                               SK_FAR_DrawIndexed,
-reinterpret_cast <LPVOID *> (&_D3D11_DrawIndexed_Original) );
+     static_cast_p2p <void> (&_D3D11_DrawIndexed_Original) );
   MH_QueueEnableHook (         D3D11_DrawIndexed_Override  );
 
   SK_CreateFuncHook (       L"SK_PlugIn_ControlPanelWidget",
                               SK_PlugIn_ControlPanelWidget,
                                  SK_FAR_ControlPanel,
-reinterpret_cast <LPVOID *> (&SK_PlugIn_ControlPanelWidget_Original) );
+     static_cast_p2p <void> (&SK_PlugIn_ControlPanelWidget_Original) );
   MH_QueueEnableHook (        SK_PlugIn_ControlPanelWidget           );
 
   LPVOID dontcare = nullptr;
@@ -1475,37 +1473,37 @@ reinterpret_cast <LPVOID *> (&SK_PlugIn_ControlPanelWidget_Original) );
   SK_CreateFuncHook (       L"ID3D11DeviceContext::DrawIndexedInstanced",
                                D3D11_DrawIndexedInstanced_Override,
                               SK_FAR_DrawIndexedInstanced,
-reinterpret_cast <LPVOID *> (&_D3D11_DrawIndexedInstanced_Original) );
+     static_cast_p2p <void> (&_D3D11_DrawIndexedInstanced_Original) );
   MH_QueueEnableHook (         D3D11_DrawIndexedInstanced_Override  );
 
   SK_CreateFuncHook (       L"ID3D11DeviceContext::DrawIndexedInstancedIndirect",
                                D3D11_DrawIndexedInstancedIndirect_Override,
                               SK_FAR_DrawIndexedInstancedIndirect,
-reinterpret_cast <LPVOID *> (&_D3D11_DrawIndexedInstancedIndirect_Original) );
+     static_cast_p2p <void> (&_D3D11_DrawIndexedInstancedIndirect_Original) );
   MH_QueueEnableHook (         D3D11_DrawIndexedInstancedIndirect_Override  );
 
   SK_CreateFuncHook (       L"ID3D11DeviceContext::DrawInstanced",
                                D3D11_DrawInstanced_Override,
                               SK_FAR_DrawInstanced,
-reinterpret_cast <LPVOID *> (&_D3D11_DrawInstanced_Original) );
+     static_cast_p2p <void> (&_D3D11_DrawInstanced_Original) );
   MH_QueueEnableHook (         D3D11_DrawInstanced_Override  );
 
   SK_CreateFuncHook (       L"ID3D11DeviceContext::DrawInstancedIndirect",
                                D3D11_DrawInstancedIndirect_Override,
                               SK_FAR_DrawInstancedIndirect,
-reinterpret_cast <LPVOID *> (&_D3D11_DrawInstancedIndirect_Original) );
+     static_cast_p2p <void> (&_D3D11_DrawInstancedIndirect_Original) );
   MH_QueueEnableHook (         D3D11_DrawInstancedIndirect_Override  );
 
   SK_CreateFuncHook (       L"ID3D11DeviceContext::PSSetConstantBuffers",
                                D3D11_PSSetConstantBuffers_Override,
                               SK_FAR_PSSetConstantBuffers,
-reinterpret_cast <LPVOID *> (&_D3D11_PSSetConstantBuffers_Original) );
+     static_cast_p2p <void> (&_D3D11_PSSetConstantBuffers_Original) );
   MH_QueueEnableHook (         D3D11_PSSetConstantBuffers_Override  );
 
   SK_CreateFuncHook (       L"ID3D11DeviceContext::UpdateSubresource",
                                D3D11_UpdateSubresource_Override,
                               SK_FAR_UpdateSubresource,
-reinterpret_cast <LPVOID *> (&_D3D11_UpdateSubresource_Original) );
+     static_cast_p2p <void> (&_D3D11_UpdateSubresource_Original) );
   MH_QueueEnableHook (         D3D11_UpdateSubresource_Override  );
 
 
@@ -1795,7 +1793,7 @@ reinterpret_cast <LPVOID *> (&_D3D11_UpdateSubresource_Original) );
       [](SK_Keybind* binding, wchar_t* ini_name) ->
         auto
         {
-          sk::ParameterStringW* ret =
+          auto* ret =
            dynamic_cast <sk::ParameterStringW *>
             (far_factory.create_parameter <std::wstring> (L"DESCRIPTION HERE"));
 
@@ -1821,10 +1819,11 @@ reinterpret_cast <LPVOID *> (&_D3D11_UpdateSubresource_Original) );
 
 
 
-    SK_CreateFuncHook ( L"SK_BeginBufferSwap", SK_BeginBufferSwap,
-                                               SK_FAR_EndFrame,
-                 reinterpret_cast <LPVOID *> (&SK_EndFrame_Original) );
-    MH_QueueEnableHook (SK_BeginBufferSwap);
+    SK_CreateFuncHook (      L"SK_BeginBufferSwap",
+                               SK_BeginBufferSwap,
+                           SK_FAR_EndFrame,
+      static_cast_p2p <void> (&SK_EndFrame_Original) );
+    MH_QueueEnableHook (       SK_BeginBufferSwap);
 
 
     far_prefs->write (far_prefs_file);

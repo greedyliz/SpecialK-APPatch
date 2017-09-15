@@ -18,7 +18,6 @@
  *   If not, see <http://www.gnu.org/licenses/>.
  *
 **/
-#define _CRT_SECURE_NO_WARNINGS
 
 #include <SpecialK/widgets/widget.h>
 #include <SpecialK/gpu_monitor.h>
@@ -37,7 +36,7 @@ public:
     setAutoFit (true).setDockingPoint (DockAnchor::East).setClickThrough (true);
   };
 
-  void run (void)
+  virtual void run (void) override
   {
     static bool started = false;
 
@@ -61,18 +60,16 @@ public:
 
       for (unsigned int i = 0; i < cpu_records.size (); i++)
       {
-        cpu_records [i].addValue ((float)cpu_stats.cpus [i].percent_load);
+        cpu_records [i].addValue (static_cast <float> (cpu_stats.cpus [i].percent_load));
       }
 
       last_update = dwNow;
     }
   }
 
-  void draw (void)
+  virtual void draw (void) override
   {
-    ImGuiIO& io (ImGui::GetIO ());
-
-    const  float font_size           =             ImGui::GetFont  ()->FontSize                        * io.FontGlobalScale;
+    const  float font_size           =             ImGui::GetFont  ()->FontSize;//                        * scale;
     const  float font_size_multiline = font_size + ImGui::GetStyle ().ItemSpacing.y + ImGui::GetStyle ().ItemInnerSpacing.y;
 
     static char szAvg [512] = { };
@@ -130,7 +127,7 @@ public:
     }
   }
 
-  void OnConfig (ConfigEvent event)
+  virtual void OnConfig (ConfigEvent event) override
   {
     switch (event)
     {
@@ -148,5 +145,5 @@ protected:
 private:
   DWORD last_update = 0UL;
 
-  std::vector <SK_ImGui_DataHistory <float, 96>> cpu_records;
+  std::vector <SK_Stat_DataHistory <float, 96>> cpu_records;
 } __cpu_monitor__;

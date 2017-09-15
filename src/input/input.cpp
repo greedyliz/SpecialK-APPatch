@@ -18,10 +18,7 @@
  *   If not, see <http://www.gnu.org/licenses/>.
  *
 **/
-#define _CRT_SECURE_NO_WARNINGS
 #define DIRECTINPUT_VERSION 0x0800
-
-#define NOMINMAX
 
 #include <SpecialK/input/input.h>
 #include <SpecialK/input/dinput8_backend.h>
@@ -69,7 +66,7 @@ SK_InputUtil_IsHWCursorVisible (void)
 
 //////////////////////////////////////////////////////////////
 //
-// HIDClass (Usermode)
+// HIDClass (User mode)
 //
 //////////////////////////////////////////////////////////////
 bool
@@ -99,6 +96,7 @@ SK_HID_FilterPreparsedData (PHIDP_PREPARSED_DATA pData)
       case HID_USAGE_GENERIC_MOUSE:
       {
         SK_HID_READ (sk_input_dev_type::Mouse)
+
         if (SK_ImGui_WantMouseCapture ())
           filter = true;
       } break;
@@ -249,7 +247,7 @@ SK_Input_HookHID (void)
 
   static volatile LONG hooked = FALSE;
 
-  if (! InterlockedExchangeAdd (&hooked, 0))
+  if (! InterlockedCompareExchange (&hooked, 1, 0))
   {
     SK_LOG0 ( ( L"Game uses HID, installing input hooks..." ),
                 L"   Input  " );
@@ -257,29 +255,31 @@ SK_Input_HookHID (void)
     SK_CreateDLLHook2 (     L"HID.DLL",
                              "HidP_GetData",
                               HidP_GetData_Detour,
-reinterpret_cast <LPVOID *> (&HidP_GetData_Original) );
+     static_cast_p2p <void> (&HidP_GetData_Original) );
 
     SK_CreateDLLHook2 (     L"HID.DLL",
                              "HidD_GetPreparsedData",
                               HidD_GetPreparsedData_Detour,
-reinterpret_cast <LPVOID *> (&HidD_GetPreparsedData_Original) );
+     static_cast_p2p <void> (&HidD_GetPreparsedData_Original) );
 
     SK_CreateDLLHook2 (     L"HID.DLL",
                              "HidD_FreePreparsedData",
                               HidD_FreePreparsedData_Detour,
-reinterpret_cast <LPVOID *> (&HidD_FreePreparsedData_Original) );
+     static_cast_p2p <void> (&HidD_FreePreparsedData_Original) );
 
     SK_CreateDLLHook2 (     L"HID.DLL",
                              "HidD_GetFeature",
                               HidD_GetFeature_Detour,
-reinterpret_cast <LPVOID *> (&HidD_GetFeature_Original) );
+     static_cast_p2p <void> (&HidD_GetFeature_Original) );
 
     HidP_GetCaps_Original =
       (HidP_GetCaps_pfn)GetProcAddress ( GetModuleHandle (L"HID.DLL"),
                                            "HidP_GetCaps" );
 
-    if (HidP_GetData_Original != nullptr)
-      InterlockedIncrement (&hooked);
+    SK_ApplyQueuedHooks ();
+
+    if (HidP_GetData_Original == nullptr)
+      InterlockedDecrement (&hooked);
   }
 }
 
@@ -309,7 +309,7 @@ std::vector <RAWINPUTDEVICE> raw_devices;   // ALL devices, this is the list as 
 
 std::vector <RAWINPUTDEVICE> raw_mice;      // View of only mice
 std::vector <RAWINPUTDEVICE> raw_keyboards; // View of only keyboards
-std::vector <RAWINPUTDEVICE> raw_gamepads;  // View of only gamepads
+std::vector <RAWINPUTDEVICE> raw_gamepads;  // View of only game pads
 
 struct
 {
@@ -336,7 +336,7 @@ SK_RawInput_GetMice (bool* pDifferent = nullptr)
     std::vector <RAWINPUTDEVICE> overrides;
 
     // Aw, the game doesn't have any mice -- let's fix that.
-    if (raw_mice.size () == 0)
+    if (raw_mice.empty ())
     {
       //raw_devices.push_back (RAWINPUTDEVICE { HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_MOUSE, 0x00, NULL });
       //raw_mice.push_back    (RAWINPUTDEVICE { HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_MOUSE, 0x00, NULL });
@@ -392,7 +392,7 @@ SK_RawInput_GetKeyboards (bool* pDifferent = nullptr)
     std::vector <RAWINPUTDEVICE> overrides;
 
     // Aw, the game doesn't have any mice -- let's fix that.
-    if (raw_keyboards.size () == 0)
+    if (raw_keyboards.empty ())
     {
       //raw_devices.push_back   (RAWINPUTDEVICE { HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_KEYBOARD, 0x00, NULL });
       //raw_keyboards.push_back (RAWINPUTDEVICE { HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_KEYBOARD, 0x00, NULL });
@@ -579,12 +579,19 @@ SK_RawInput_ClassifyDevices (void)
 UINT
 SK_RawInput_PopulateDeviceList (void)
 {
+  raw_devices.clear   ( );
+  raw_mice.clear      ( );
+  raw_keyboards.clear ( );
+  raw_gamepads.clear  ( );
+
   DWORD            dwLastError = GetLastError ();
   RAWINPUTDEVICE*  pDevices    = nullptr;
   UINT            uiNumDevices = 0;
 
   UINT ret =
-    GetRegisteredRawInputDevices_Original (pDevices, &uiNumDevices, sizeof RAWINPUTDEVICE);
+    GetRegisteredRawInputDevices_Original ( pDevices,
+                                              &uiNumDevices,
+                                                sizeof RAWINPUTDEVICE );
 
   assert (ret == -1);
 
@@ -595,7 +602,9 @@ SK_RawInput_PopulateDeviceList (void)
     pDevices = new
       RAWINPUTDEVICE [uiNumDevices + 1];
 
-    GetRegisteredRawInputDevices_Original (pDevices, &uiNumDevices, sizeof RAWINPUTDEVICE);
+    GetRegisteredRawInputDevices_Original ( pDevices,
+                                              &uiNumDevices,
+                                                sizeof RAWINPUTDEVICE );
 
     raw_devices.clear ();
 
@@ -610,7 +619,9 @@ SK_RawInput_PopulateDeviceList (void)
   return uiNumDevices;
 }
 
-UINT WINAPI GetRegisteredRawInputDevices_Detour (
+UINT
+WINAPI
+GetRegisteredRawInputDevices_Detour (
   _Out_opt_ PRAWINPUTDEVICE pRawInputDevices,
   _Inout_   PUINT           puiNumDevices,
   _In_      UINT            cbSize )
@@ -624,11 +635,11 @@ UINT WINAPI GetRegisteredRawInputDevices_Detour (
   // On the first call to this function, we will need to query this stuff.
   static bool init = false;
 
-  if (! init)
-  {
+  //if (! init)
+  //{
     SK_RawInput_PopulateDeviceList ();
-    init = true;
-  }
+    //init = true;
+  //}
 
 
   if (*puiNumDevices < static_cast <UINT> (raw_devices.size ()))
@@ -652,7 +663,8 @@ UINT WINAPI GetRegisteredRawInputDevices_Detour (
 
   else
   {
-    idx += static_cast <int> (raw_devices.size ());
+    idx +=
+      static_cast <int> (raw_devices.size ());
   }
 
   return idx;
@@ -738,7 +750,7 @@ GetRawInputBuffer_Detour (_Out_opt_ PRAWINPUT pData,
 {
   SK_LOG_FIRST_CALL
 
-  if (SK_ImGui_Visible)
+  if (SK_ImGui_Active ())
   {
     ImGuiIO& io =
       ImGui::GetIO ();
@@ -760,10 +772,10 @@ GetRawInputBuffer_Detour (_Out_opt_ PRAWINPUT pData,
         ZeroMemory (pData, *pcbSize);
         const int max_items = (sizeof RAWINPUT / *pcbSize);
               int count     =                            0;
-        uint8_t *pTemp      = (uint8_t *)
+            auto *pTemp     = (uint8_t *)
                                   new RAWINPUT [max_items];
         uint8_t *pInput     =                        pTemp;
-        uint8_t *pOutput    =             (uint8_t *)pData;
+           auto *pOutput    =             (uint8_t *)pData;
         UINT     cbSize     =                     *pcbSize;
                   *pcbSize  =                            0;
 
@@ -772,7 +784,7 @@ GetRawInputBuffer_Detour (_Out_opt_ PRAWINPUT pData,
 
         for (int i = 0; i < temp_ret; i++)
         {
-          RAWINPUT* pItem = (RAWINPUT *)pInput;
+          auto* pItem = (RAWINPUT *)pInput;
 
           bool  remove = false;
           int  advance = pItem->header.dwSize;
@@ -865,7 +877,7 @@ SK_ImGui_IsMouseRelevant (void)
   // SK_ImGui_Visible is the full-blown config UI;
   //   but we also have floating widgets that may capture mouse
   //     input.
-  return SK_ImGui_Visible || ImGui::IsAnyWindowHovered ();
+  return SK_ImGui_Active () || ImGui::IsAnyWindowHovered ();
 }
 
 __inline
@@ -972,9 +984,9 @@ sk_imgui_cursor_s::ScreenToLocal (LPPOINT lpPoint)
 HCURSOR
 ImGui_DesiredCursor (void)
 {
-  static HCURSOR last_cursor = 0;
+  static HCURSOR last_cursor = nullptr;
 
-  if (ImGui::GetIO ().MouseDownDuration [0] <= 0.0f || last_cursor == 0)
+  if (ImGui::GetIO ().MouseDownDuration [0] <= 0.0f || last_cursor == nullptr)
   {
     switch (ImGui::GetMouseCursor ())
     {
@@ -1088,7 +1100,7 @@ sk_imgui_cursor_s::activateWindow (bool active)
 
 
 
-HCURSOR game_cursor = 0;
+HCURSOR game_cursor = nullptr;
 
 bool
 SK_ImGui_WantKeyboardCapture (void)
@@ -1129,7 +1141,7 @@ SK_ImGui_WantGamepadCapture (void)
 {
   bool imgui_capture = false;
 
-  if (SK_ImGui_Visible)
+  if (SK_ImGui_Active ())
   {
     if (nav_usable)
       imgui_capture = true;
@@ -1141,6 +1153,11 @@ SK_ImGui_WantGamepadCapture (void)
   if (__FAR_Freelook)
     imgui_capture = true;
 #endif
+
+  extern bool SK_ImGui_GamepadComboDialogActive;
+
+  if (SK_ImGui_GamepadComboDialogActive)
+    imgui_capture = true;
 
   return imgui_capture;
 }
@@ -1173,7 +1190,7 @@ HCURSOR GetGameCursor (void)
   static HCURSOR sys_arrow      = LoadCursor (nullptr, IDC_ARROW);
   static HCURSOR sys_wait       = LoadCursor (nullptr, IDC_WAIT);
 
-  static HCURSOR hCurLast = 0;
+  static HCURSOR hCurLast = nullptr;
          HCURSOR hCur     = GetCursor ();
 
   if ( hCur != sk_imgui_horz && hCur != sk_imgui_arrow && hCur != sk_imgui_ibeam &&
@@ -1226,7 +1243,7 @@ ImGui_ToggleCursor (void)
 
 
 
-typedef int (WINAPI *GetMouseMovePointsEx_pfn)(
+using GetMouseMovePointsEx_pfn = int (WINAPI *)(
   _In_  UINT             cbSize,
   _In_  LPMOUSEMOVEPOINT lppt,
   _Out_ LPMOUSEMOVEPOINT lpptBuf,
@@ -1255,15 +1272,20 @@ GetMouseMovePointsEx_Detour(
     //   (even if ImGui doesn't want mouse capture)
     if ( ( SK_ImGui_Cursor.prefs.no_warp.ui_open && SK_ImGui_IsMouseRelevant ()       ) ||
          ( SK_ImGui_Cursor.prefs.no_warp.visible && SK_InputUtil_IsHWCursorVisible () )    )
+    {
       implicit_capture = true;
+    }
 
     if (SK_ImGui_WantMouseCapture () || implicit_capture)
     {
+      *lpptBuf = *lppt;
+
       return 0;
     }
   }
 
-  return GetMouseMovePointsEx_Original (cbSize, lppt, lpptBuf, nBufPoints, resolution);
+  return
+    GetMouseMovePointsEx_Original (cbSize, lppt, lpptBuf, nBufPoints, resolution);
 }
 
 
@@ -1295,7 +1317,8 @@ GetCursorInfo_Detour (PCURSORINFO pci)
   BOOL  ret = GetCursorInfo_Original (pci);
         pci->ptScreenPos = pt;
 
-  pci->hCursor = SK_ImGui_Cursor.orig_img;
+  pci->hCursor =
+    SK_ImGui_Cursor.orig_img;
 
 
   if (ret && SK_ImGui_IsMouseRelevant ())
@@ -1310,17 +1333,22 @@ GetCursorInfo_Detour (PCURSORINFO pci)
 
     if (SK_ImGui_WantMouseCapture () || implicit_capture)
     {
-      POINT client = SK_ImGui_Cursor.orig_pos;
+      POINT client =
+        SK_ImGui_Cursor.orig_pos;
 
       SK_ImGui_Cursor.LocalToScreen (&client);
+
       pci->ptScreenPos.x = client.x;
       pci->ptScreenPos.y = client.y;
     }
 
-    else {
-      POINT client = SK_ImGui_Cursor.pos;
+    else
+    {
+      POINT client =
+        SK_ImGui_Cursor.pos;
 
       SK_ImGui_Cursor.LocalToScreen (&client);
+
       pci->ptScreenPos.x = client.x;
       pci->ptScreenPos.y = client.y;
     }
@@ -1351,17 +1379,22 @@ GetCursorPos_Detour (LPPOINT lpPoint)
 
     if (SK_ImGui_WantMouseCapture () || implicit_capture)
     {
-      POINT client = SK_ImGui_Cursor.orig_pos;
+      POINT client =
+        SK_ImGui_Cursor.orig_pos;
 
       SK_ImGui_Cursor.LocalToScreen (&client);
+
       lpPoint->x = client.x;
       lpPoint->y = client.y;
     }
 
-    else {
-      POINT client = SK_ImGui_Cursor.pos;
+    else
+    {
+      POINT client =
+        SK_ImGui_Cursor.pos;
 
       SK_ImGui_Cursor.LocalToScreen (&client);
+
       lpPoint->x = client.x;
       lpPoint->y = client.y;
     }
@@ -1421,7 +1454,7 @@ SendInput_Detour (
 
   // TODO: Process this the right way...
 
-  if (SK_ImGui_Visible)
+  if (SK_ImGui_Active ())
   {
     return 0;
   }
@@ -1444,7 +1477,7 @@ keybd_event_Detour (
 
 // TODO: Process this the right way...
 
-  if (SK_ImGui_Visible)
+  if (SK_ImGui_Active ())
   {
     return;
   }
@@ -1594,6 +1627,7 @@ SK_ImGui_HandlesMessage (LPMSG lpMsg, bool, bool)
       break;
 
     case WM_CHAR:
+    case WM_MENUCHAR:
       handled = SK_ImGui_WantTextCapture ();
       break;
 
@@ -1609,7 +1643,7 @@ SK_ImGui_HandlesMessage (LPMSG lpMsg, bool, bool)
 
     case WM_SETCURSOR:
     {
-      if (lpMsg->hwnd == game_window.hWnd && game_window.hWnd != 0)
+      if (lpMsg->hwnd == game_window.hWnd && game_window.hWnd != nullptr)
         SK_ImGui_Cursor.update ();
     } break;
 
@@ -1634,13 +1668,14 @@ SK_ImGui_HandlesMessage (LPMSG lpMsg, bool, bool)
     case WM_XBUTTONDOWN:
     case WM_XBUTTONUP:
 
+    case WM_CAPTURECHANGED:
     case WM_MOUSEMOVE:
     case WM_MOUSEWHEEL:
     case WM_MOUSEHWHEEL:
     {
-      ImGui_WndProcHandler (lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam);
-
-      handled = SK_ImGui_WantMouseCapture ();
+      handled =
+        ( ImGui_WndProcHandler (lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam) != 0 ) &&
+       SK_ImGui_WantMouseCapture ();
     } break;
 
     case WM_INPUT:
@@ -1669,78 +1704,78 @@ void SK_Input_PreInit (void)
   SK_CreateDLLHook2 (       L"user32.dll",
                              "GetRawInputData",
                               GetRawInputData_Detour,
-reinterpret_cast <LPVOID *> (&GetRawInputData_Original) );
+     static_cast_p2p <void> (&GetRawInputData_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "GetAsyncKeyState",
                               GetAsyncKeyState_Detour,
-reinterpret_cast <LPVOID *> (&GetAsyncKeyState_Original) );
+     static_cast_p2p <void> (&GetAsyncKeyState_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "GetKeyState",
                               GetKeyState_Detour,
-reinterpret_cast <LPVOID *> (&GetKeyState_Original) );
+     static_cast_p2p <void> (&GetKeyState_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "GetKeyboardState",
                               GetKeyboardState_Detour,
-reinterpret_cast <LPVOID *> (&GetKeyboardState_Original) );
+     static_cast_p2p <void> (&GetKeyboardState_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "GetCursorPos",
                               GetCursorPos_Detour,
-reinterpret_cast <LPVOID *> (&GetCursorPos_Original) );
+     static_cast_p2p <void> (&GetCursorPos_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "GetCursorInfo",
                               GetCursorInfo_Detour,
-reinterpret_cast <LPVOID *> (&GetCursorInfo_Original) );
+     static_cast_p2p <void> (&GetCursorInfo_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "GetMouseMovePointsEx",
                               GetMouseMovePointsEx_Detour,
-reinterpret_cast <LPVOID *> (&GetMouseMovePointsEx_Original) );
+     static_cast_p2p <void> (&GetMouseMovePointsEx_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "SetCursor",
                               SetCursor_Detour,
-reinterpret_cast <LPVOID *> (&SetCursor_Original) );
+     static_cast_p2p <void> (&SetCursor_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "SetCursorPos",
                               SetCursorPos_Detour,
-reinterpret_cast <LPVOID *> (&SetCursorPos_Original) );
+     static_cast_p2p <void> (&SetCursorPos_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "SendInput",
                               SendInput_Detour,
-reinterpret_cast <LPVOID *> (&SendInput_Original) );
+     static_cast_p2p <void> (&SendInput_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "mouse_event",
                               mouse_event_Detour,
-reinterpret_cast <LPVOID *> (&mouse_event_Original) );
+     static_cast_p2p <void> (&mouse_event_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "keybd_event",
                               keybd_event_Detour,
-reinterpret_cast <LPVOID *> (&keybd_event_Original) );
+     static_cast_p2p <void> (&keybd_event_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "RegisterRawInputDevices",
                               RegisterRawInputDevices_Detour,
-reinterpret_cast <LPVOID *> (&RegisterRawInputDevices_Original) );
+     static_cast_p2p <void> (&RegisterRawInputDevices_Original) );
 
   SK_CreateDLLHook2 (       L"user32.dll",
                              "GetRegisteredRawInputDevices",
                               GetRegisteredRawInputDevices_Detour,
-reinterpret_cast <LPVOID *> (&GetRegisteredRawInputDevices_Original) );
+     static_cast_p2p <void> (&GetRegisteredRawInputDevices_Original) );
 
 #if 0
   SK_CreateDLLHook2 (       L"user32.dll",
                              "GetRawInputBuffer",
                               GetRawInputBuffer_Detour,
-reinterpret_cast <LPVOID *> (&GetRawInputBuffer_Original) );
+     static_cast_p2p <void> (&GetRawInputBuffer_Original) );
 #endif
 
   if (config.input.gamepad.hook_xinput)

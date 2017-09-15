@@ -18,8 +18,6 @@
  *   If not, see <http://www.gnu.org/licenses/>.
  *
 **/
-#define _CRT_NON_CONFORMING_SWPRINTFS
-#define _CRT_SECURE_NO_WARNINGS
 
 #include <SpecialK/ini.h>
 #include <SpecialK/parameter.h>
@@ -226,9 +224,10 @@ SK_FetchVersionInfo1 (const wchar_t* wszProduct, bool force)
 
         sk::ParameterFactory ParameterFactory;
 
-        sk::ParameterInt64* remind_time =
-          (sk::ParameterInt64 *)
-            ParameterFactory.create_parameter <int64_t> (L"Reminder");
+        auto* remind_time =
+          dynamic_cast <sk::ParameterInt64 *> (
+            ParameterFactory.create_parameter <int64_t> (L"Reminder")
+          );
 
         remind_time->register_to_ini (
           &install_ini,
@@ -324,7 +323,7 @@ SK_FetchVersionInfo1 (const wchar_t* wszProduct, bool force)
                             nullptr, nullptr,
                               INTERNET_SERVICE_HTTP,
                                 0x00,
-                                  (DWORD_PTR)&dwInetCtx );
+                                  reinterpret_cast <DWORD_PTR> (&dwInetCtx) );
 
   if (! hInetGitHub)
   {
@@ -367,7 +366,7 @@ SK_FetchVersionInfo1 (const wchar_t* wszProduct, bool force)
                               nullptr,
                                 rgpszAcceptTypes,
                                   dwFlags,
-                                    (DWORD_PTR)&dwInetCtx );
+                                    reinterpret_cast <DWORD_PTR> (&dwInetCtx) );
 
   if (! hInetGitHubOpen)
   {
@@ -541,11 +540,11 @@ SK_Version_GetLastCheckTime_WStr (void)
 
   wchar_t wszFileTime [512] = { };
 
-  GetDateFormat (LOCALE_USER_DEFAULT, DATE_AUTOLAYOUT, &stModified, NULL, wszFileTime, 512);
+  GetDateFormat (LOCALE_USER_DEFAULT, DATE_AUTOLAYOUT, &stModified, nullptr, wszFileTime, 512);
 
   std::wstring date_time = wszFileTime;
 
-  GetTimeFormat (LOCALE_USER_DEFAULT, TIME_NOSECONDS, &stModified, NULL, wszFileTime, 512);
+  GetTimeFormat (LOCALE_USER_DEFAULT, TIME_NOSECONDS, &stModified, nullptr, wszFileTime, 512);
 
   date_time += L" ";
   date_time += wszFileTime;

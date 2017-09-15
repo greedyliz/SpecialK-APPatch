@@ -89,6 +89,8 @@ typedef void (*ImGuiSizeConstraintCallback)(ImGuiSizeConstraintCallbackData* dat
 // class ImVector<>                 // Lightweight std::vector like class.
 // IMGUI_ONCE_UPON_A_FRAME          // Execute a block of code once per frame only (convenient for creating UI within deep-nested code that runs multiple times)
 
+#ifndef IM_VEC2_DEFINED
+#define IM_VEC2_DEFINED
 struct ImVec2
 {
     float x, y;
@@ -98,6 +100,7 @@ struct ImVec2
     IM_VEC2_CLASS_EXTRA
 #endif
 };
+#endif
 
 struct ImVec4
 {
@@ -1456,5 +1459,8 @@ extern IMGUI_API void __stdcall SK_PlugIn_ControlPanelWidget (void);
 #include "imgui_user.h"
 #endif
 
-extern bool SK_ImGui_Visible;
-extern bool nav_usable;
+extern IMGUI_API bool SK_ImGui_Visible;
+extern           bool SK_ReShade_Visible;
+extern           bool nav_usable;
+
+static inline bool SK_ImGui_Active (void) { return SK_ImGui_Visible || SK_ReShade_Visible; };

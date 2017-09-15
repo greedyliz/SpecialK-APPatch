@@ -22,8 +22,217 @@
 #ifndef __SK__D3D9_BACKEND_H__
 #define __SK__D3D9_BACKEND_H__
 
+#undef D3D_DISABLE_9EX
+
 #include <Windows.h>
 #include <d3d9.h>
+#include <d3dx9shader.h>
+
+#include <unordered_map>
+#include <unordered_set>
+#include <cstdint>
+
+namespace SK   {
+namespace D3D9 {
+  struct KnownShaders
+  {
+    //typedef std::unordered_map <uint32_t, std::unordered_set <ID3D11ShaderResourceView *>> conditional_blacklist_t;
+  
+    template <typename _T>
+    struct ShaderRegistry
+    {
+      void clear (void)
+      {
+        rev.clear   ();
+        clear_state ();
+  
+        changes_last_frame = 0;
+      }
+  
+      void clear_state (void)
+      {
+        current.crc32c = 0x0;
+        current.ptr    = nullptr;
+      }
+  
+      std::unordered_map <_T*, uint32_t>      rev;
+      //std::unordered_map <uint32_t, SK_D3D11_ShaderDesc> descs;
+  
+      std::unordered_set <uint32_t>           wireframe;
+      std::unordered_set <uint32_t>           blacklist;
+  
+      //conditional_blacklist_t                 blacklist_if_texture;
+  
+      struct
+      {
+        uint32_t                              crc32c = 0x00;
+        _T*                                   ptr    = nullptr;
+      } current;
+  
+      //d3d11_shader_tracking_s                 tracked;
+  
+      ULONG                                   changes_last_frame = 0;
+    };
+  
+    ShaderRegistry <IDirect3DPixelShader9>    pixel;
+    ShaderRegistry <IDirect3DVertexShader9>   vertex;
+  } extern Shaders;
+
+// Dumb macro in WinUser.h
+#undef DrawState
+
+  struct DrawState
+  {
+    // Most of these states are not tracked
+    DWORD           srcblend        = 0;
+    DWORD           dstblend        = 0;
+    DWORD           srcalpha        = 0;     // Separate Alpha Blend Eq: Src
+    DWORD           dstalpha        = 0;     // Separate Alpha Blend Eq: Dst
+    bool            alpha_test      = false; // Test Alpha?
+    DWORD           alpha_ref       = 0;     // Value to test.
+    bool            zwrite          = false; // Depth Mask
+  
+    volatile ULONG  draws           = 0; // Number of draw calls
+    volatile ULONG  frames          = 0;
+  
+    bool            cegui_active    = false;
+    
+    int             instances       = 0;
+  
+    uint32_t        current_tex  [256];
+    float           viewport_off [4]  = { 0.0f }; // Most vertex shaders use this and we can
+                                                  //   test the set values to determine if a draw
+                                                  //     is HUD or world-space.
+                                                  //     
+    volatile ULONG  draw_count  = 0;
+    volatile ULONG  next_draw   = 0;
+    volatile ULONG  scene_count = 0;
+  } extern draw_state;
+
+
+  struct FrameState
+  {
+    void clear (void) { pixel_shaders.clear (); vertex_shaders.clear (); vertex_buffers.dynamic.clear (); vertex_buffers.immutable.clear (); }
+  
+    std::unordered_set <uint32_t>                 pixel_shaders;
+    std::unordered_set <uint32_t>                 vertex_shaders;
+  
+    struct {
+      std::unordered_set <IDirect3DVertexBuffer9 *> dynamic;
+      std::unordered_set <IDirect3DVertexBuffer9 *> immutable;
+    } vertex_buffers;
+  } extern last_frame;
+  
+  struct KnownObjects
+  {
+    void clear (void) { static_vbs.clear (); dynamic_vbs.clear (); };
+  
+    std::unordered_set <IDirect3DVertexBuffer9 *> static_vbs;
+    std::unordered_set <IDirect3DVertexBuffer9 *> dynamic_vbs;
+  } extern known_objs;
+  
+  struct RenderTargetTracker
+  {
+    void clear (void) { pixel_shaders.clear (); vertex_shaders.clear (); active = false; }
+  
+    IDirect3DBaseTexture9*        tracking_tex  = nullptr;
+  
+    std::unordered_set <uint32_t> pixel_shaders;
+    std::unordered_set <uint32_t> vertex_shaders;
+  
+    bool                          active        = false;
+  } extern tracked_rt;
+  
+  struct ShaderTracker
+  {
+    void clear (void)
+    {
+      active    = false;
+      InterlockedExchange (&num_draws, 0);
+      used_textures.clear ();
+  
+      for (auto& current_texture : current_textures)
+        current_texture = 0x00;
+    }
+  
+    void use (IUnknown* pShader);
+  
+    uint32_t                      crc32c       =  0x00;
+    bool                          cancel_draws = false;
+    bool                          clamp_coords = false;
+    bool                          active       = false;
+    volatile ULONG                num_draws    =     0;
+    std::unordered_set <IDirect3DBaseTexture9*> used_textures;
+                        IDirect3DBaseTexture9*  current_textures [16];
+  
+    //std::vector <IDirect3DBaseTexture9 *> samplers;
+  
+    IUnknown*                     shader_obj  = nullptr;
+    ID3DXConstantTable*           ctable      = nullptr;
+  
+    struct shader_constant_s
+    {
+      char                Name [128];
+      D3DXREGISTER_SET    RegisterSet;
+      UINT                RegisterIndex;
+      UINT                RegisterCount;
+      D3DXPARAMETER_CLASS Class;
+      D3DXPARAMETER_TYPE  Type;
+      UINT                Rows;
+      UINT                Columns;
+      UINT                Elements;
+      std::vector <shader_constant_s>
+                          struct_members;
+      bool                Override;
+      float               Data [4]; // TEMP HACK
+    };
+  
+    std::vector <shader_constant_s> constants;
+  };
+  
+  extern ShaderTracker tracked_vs;
+  extern ShaderTracker tracked_ps;
+  
+  struct VertexBufferTracker
+  {
+    void clear (void);
+    void use   (void);
+  
+    IDirect3DVertexBuffer9*       vertex_buffer = nullptr;
+  
+    std::unordered_set <
+      IDirect3DVertexDeclaration9*
+    >                             vertex_decls;
+  
+    //uint32_t                      crc32c       =  0x00;
+    bool                          cancel_draws  = false;
+    bool                          wireframe     = false;
+    bool                          active        = false;
+    volatile ULONG                num_draws     =     0;
+    volatile ULONG                instanced     =     0;
+    int                           instances     =     1;
+  
+    std::unordered_set <uint32_t> vertex_shaders;
+    std::unordered_set <uint32_t> pixel_shaders;
+    std::unordered_set <uint32_t> textures;
+  
+    std::unordered_set <IDirect3DVertexBuffer9 *>
+                                  wireframes;
+  } extern tracked_vb;
+  
+  struct ShaderDisassembly {
+    std::string header;
+    std::string code;
+    std::string footer;
+  };
+
+  enum class ShaderClass {
+    Unknown = 0x00,
+    Pixel   = 0x01,
+    Vertex  = 0x02
+  };
+}
+}
 
 class SK_IDirect3D9 : public IDirect3D9
 {
@@ -41,14 +250,14 @@ public:
   virtual
   HRESULT
   WINAPI
-    QueryInterface (REFIID riid, void** ppvObj) {
+    QueryInterface (REFIID riid, void** ppvObj) override {
       return d3d9_->QueryInterface (riid, ppvObj);
     }
 
   virtual
   ULONG
   WINAPI
-    AddRef (void) {
+    AddRef (void) override {
       //++refs_;
       return d3d9_->AddRef ();
     }
@@ -56,7 +265,7 @@ public:
   virtual
   ULONG
   WINAPI
-    Release (void) {
+    Release (void) override {
       //--refs_;
       return d3d9_->Release ();
     }
@@ -66,14 +275,14 @@ public:
   virtual
   HRESULT
   WINAPI
-    RegisterSoftwareDevice (void* pInitializeFunction) {
+    RegisterSoftwareDevice (void* pInitializeFunction) override {
       return d3d9_->RegisterSoftwareDevice (pInitializeFunction);
     }
 
   virtual
   UINT
   WINAPI
-    GetAdapterCount(void) {
+    GetAdapterCount(void) override {
       return d3d9_->GetAdapterCount ();
     }
 
@@ -82,14 +291,14 @@ public:
   WINAPI
     GetAdapterIdentifier ( UINT                    Adapter,
                            DWORD                   Flags,
-                           D3DADAPTER_IDENTIFIER9* pIdentifier ) {
+                           D3DADAPTER_IDENTIFIER9* pIdentifier ) override {
       return d3d9_->GetAdapterIdentifier (Adapter, Flags, pIdentifier);
     }
 
   virtual
   UINT
   WINAPI
-    GetAdapterModeCount (UINT Adapter, D3DFORMAT Format) {
+    GetAdapterModeCount (UINT Adapter, D3DFORMAT Format) override {
       return d3d9_->GetAdapterModeCount (Adapter, Format);
     }
 
@@ -99,14 +308,14 @@ public:
     EnumAdapterModes ( UINT            Adapter,
                        D3DFORMAT       Format,
                        UINT            Mode,
-                       D3DDISPLAYMODE* pMode) {
+                       D3DDISPLAYMODE* pMode) override {
       return d3d9_->EnumAdapterModes (Adapter, Format, Mode, pMode);
     }
 
   virtual
   HRESULT
   WINAPI
-    GetAdapterDisplayMode (UINT Adapter, D3DDISPLAYMODE* pMode) {
+    GetAdapterDisplayMode (UINT Adapter, D3DDISPLAYMODE* pMode) override {
       return d3d9_->GetAdapterDisplayMode (Adapter, pMode);
     }
 
@@ -117,7 +326,7 @@ public:
                       D3DDEVTYPE DevType,
                       D3DFORMAT  AdapterFormat,
                       D3DFORMAT  BackBufferFormat,
-                      BOOL       bWindowed ) {
+                      BOOL       bWindowed ) override {
       return d3d9_->CheckDeviceType ( Adapter,
                                         DevType,
                                           AdapterFormat,
@@ -133,7 +342,7 @@ public:
                         D3DFORMAT       AdapterFormat,
                         DWORD           Usage,
                         D3DRESOURCETYPE RType,
-                        D3DFORMAT       CheckFormat) {
+                        D3DFORMAT       CheckFormat) override {
       return d3d9_->CheckDeviceFormat ( Adapter,
                                           DeviceType,
                                             AdapterFormat,
@@ -150,7 +359,7 @@ public:
                                  D3DFORMAT           SurfaceFormat,
                                  BOOL                Windowed,
                                  D3DMULTISAMPLE_TYPE MultiSampleType,
-                                 DWORD*              pQualityLevels ) {
+                                 DWORD*              pQualityLevels ) override {
       return d3d9_->CheckDeviceMultiSampleType ( Adapter,
                                                    DeviceType,
                                                      SurfaceFormat,
@@ -166,7 +375,7 @@ public:
                              D3DDEVTYPE DeviceType,
                              D3DFORMAT  AdapterFormat,
                              D3DFORMAT  RenderTargetFormat,
-                             D3DFORMAT  DepthStencilFormat ) {
+                             D3DFORMAT  DepthStencilFormat ) override {
       return d3d9_->CheckDepthStencilMatch ( Adapter,
                                                DeviceType,
                                                  AdapterFormat,
@@ -180,7 +389,7 @@ public:
     CheckDeviceFormatConversion ( UINT       Adapter,
                                   D3DDEVTYPE DeviceType,
                                   D3DFORMAT  SourceFormat,
-                                  D3DFORMAT  TargetFormat ) {
+                                  D3DFORMAT  TargetFormat ) override {
       return d3d9_->CheckDeviceFormatConversion ( Adapter,
                                                     DeviceType,
                                                       SourceFormat,
@@ -192,14 +401,14 @@ public:
   WINAPI
     GetDeviceCaps ( UINT       Adapter,
                     D3DDEVTYPE DeviceType,
-                    D3DCAPS9*  pCaps ) {
+                    D3DCAPS9*  pCaps ) override {
       return d3d9_->GetDeviceCaps (Adapter, DeviceType, pCaps);
     }
 
   virtual
   HMONITOR
   WINAPI
-    GetAdapterMonitor (UINT Adapter) {
+    GetAdapterMonitor (UINT Adapter) override {
       return d3d9_->GetAdapterMonitor (Adapter);
     }
 
@@ -211,7 +420,7 @@ public:
                    HWND                   hFocusWindow,
                    DWORD                  BehaviorFlags,
                    D3DPRESENT_PARAMETERS* pPresentationParameters,
-                   IDirect3DDevice9**     ppReturnedDeviceInterface );
+                   IDirect3DDevice9**     ppReturnedDeviceInterface ) override;
 
 protected:
   //int         refs_;:
@@ -224,7 +433,7 @@ public:
   SK_IDirect3D9Ex (IDirect3D9Ex* pImpl) : SK_IDirect3D9 (pImpl) {
   }
 
-  virtual ~SK_IDirect3D9Ex (void) {
+  virtual ~SK_IDirect3D9Ex (void) override {
     //Assert (refs == 0)
   }
 
@@ -691,14 +900,14 @@ namespace SK
 }
 
 
-typedef HRESULT (STDMETHODCALLTYPE *D3D9PresentDevice_pfn)(
+using D3D9PresentDevice_pfn = HRESULT (STDMETHODCALLTYPE *)(
            IDirect3DDevice9    *This,
 _In_ const RECT                *pSourceRect,
 _In_ const RECT                *pDestRect,
 _In_       HWND                 hDestWindowOverride,
 _In_ const RGNDATA             *pDirtyRegion);
 
-typedef HRESULT (STDMETHODCALLTYPE *D3D9PresentDeviceEx_pfn)(
+using D3D9PresentDeviceEx_pfn = HRESULT (STDMETHODCALLTYPE *)(
            IDirect3DDevice9Ex  *This,
 _In_ const RECT                *pSourceRect,
 _In_ const RECT                *pDestRect,
@@ -706,7 +915,7 @@ _In_       HWND                 hDestWindowOverride,
 _In_ const RGNDATA             *pDirtyRegion,
 _In_       DWORD                dwFlags);
 
-typedef HRESULT (STDMETHODCALLTYPE *D3D9PresentSwapChain_pfn)(
+using D3D9PresentSwapChain_pfn = HRESULT (STDMETHODCALLTYPE *)(
              IDirect3DSwapChain9 *This,
   _In_ const RECT                *pSourceRect,
   _In_ const RECT                *pDestRect,
@@ -714,7 +923,7 @@ typedef HRESULT (STDMETHODCALLTYPE *D3D9PresentSwapChain_pfn)(
   _In_ const RGNDATA             *pDirtyRegion,
   _In_       DWORD                dwFlags);
 
-typedef HRESULT (STDMETHODCALLTYPE *D3D9PresentSwapChainEx_pfn)(
+using D3D9PresentSwapChainEx_pfn = HRESULT (STDMETHODCALLTYPE *)(
   IDirect3DDevice9Ex  *This,
   _In_ const RECT                *pSourceRect,
   _In_ const RECT                *pDestRect,
@@ -722,7 +931,7 @@ typedef HRESULT (STDMETHODCALLTYPE *D3D9PresentSwapChainEx_pfn)(
   _In_ const RGNDATA             *pDirtyRegion,
   _In_       DWORD                dwFlags);
 
-typedef HRESULT (STDMETHODCALLTYPE *D3D9CreateDevice_pfn)(
+using D3D9CreateDevice_pfn = HRESULT (STDMETHODCALLTYPE *)(
            IDirect3D9             *This,
            UINT                    Adapter,
            D3DDEVTYPE              DeviceType,
@@ -731,7 +940,7 @@ typedef HRESULT (STDMETHODCALLTYPE *D3D9CreateDevice_pfn)(
            D3DPRESENT_PARAMETERS  *pPresentationParameters,
            IDirect3DDevice9      **ppReturnedDeviceInterface);
 
-typedef HRESULT (STDMETHODCALLTYPE *D3D9CreateDeviceEx_pfn)(
+using D3D9CreateDeviceEx_pfn = HRESULT (STDMETHODCALLTYPE *)(
            IDirect3D9Ex           *This,
            UINT                    Adapter,
            D3DDEVTYPE              DeviceType,
@@ -741,28 +950,28 @@ typedef HRESULT (STDMETHODCALLTYPE *D3D9CreateDeviceEx_pfn)(
            D3DDISPLAYMODEEX       *pFullscreenDisplayMode,
            IDirect3DDevice9Ex    **ppReturnedDeviceInterface);
 
-typedef HRESULT (STDMETHODCALLTYPE *D3D9Reset_pfn)(
+using D3D9Reset_pfn = HRESULT (STDMETHODCALLTYPE *)(
            IDirect3DDevice9      *This,
            D3DPRESENT_PARAMETERS *pPresentationParameters);
 
-typedef HRESULT (STDMETHODCALLTYPE *D3D9ResetEx_pfn)(
+using D3D9ResetEx_pfn = HRESULT (STDMETHODCALLTYPE *)(
            IDirect3DDevice9Ex    *This,
            D3DPRESENT_PARAMETERS *pPresentationParameters,
            D3DDISPLAYMODEEX      *pFullscreenDisplayMode );
 
-typedef void (STDMETHODCALLTYPE *SetGammaRamp_pfn)(
+using SetGammaRamp_pfn = void (STDMETHODCALLTYPE *)(
            IDirect3DDevice9      *This,
 _In_       UINT                   iSwapChain,
 _In_       DWORD                  Flags,
 _In_ const D3DGAMMARAMP          *pRamp );
 
-typedef HRESULT (STDMETHODCALLTYPE *DrawPrimitive_pfn)
+using DrawPrimitive_pfn = HRESULT (STDMETHODCALLTYPE *)
   ( IDirect3DDevice9* This,
     D3DPRIMITIVETYPE  PrimitiveType,
     UINT              StartVertex,
     UINT              PrimitiveCount );
 
-typedef HRESULT (STDMETHODCALLTYPE *DrawIndexedPrimitive_pfn)
+using DrawIndexedPrimitive_pfn = HRESULT (STDMETHODCALLTYPE *)
   ( IDirect3DDevice9* This,
     D3DPRIMITIVETYPE  Type,
     INT               BaseVertexIndex,
@@ -771,14 +980,14 @@ typedef HRESULT (STDMETHODCALLTYPE *DrawIndexedPrimitive_pfn)
     UINT              startIndex,
     UINT              primCount );
 
-typedef HRESULT (STDMETHODCALLTYPE *DrawPrimitiveUP_pfn)
+using DrawPrimitiveUP_pfn = HRESULT (STDMETHODCALLTYPE *)
   ( IDirect3DDevice9* This,
     D3DPRIMITIVETYPE  PrimitiveType,
     UINT              PrimitiveCount,
     const void       *pVertexStreamZeroData,
     UINT              VertexStreamZeroStride );
 
-typedef HRESULT (STDMETHODCALLTYPE *DrawIndexedPrimitiveUP_pfn)
+using DrawIndexedPrimitiveUP_pfn = HRESULT (STDMETHODCALLTYPE *)
   ( IDirect3DDevice9* This,
     D3DPRIMITIVETYPE  PrimitiveType,
     UINT              MinVertexIndex,
@@ -789,33 +998,38 @@ typedef HRESULT (STDMETHODCALLTYPE *DrawIndexedPrimitiveUP_pfn)
     const void       *pVertexStreamZeroData,
     UINT              VertexStreamZeroStride );
 
-typedef HRESULT (STDMETHODCALLTYPE *SetTexture_pfn)
+using GetTexture_pfn = HRESULT (STDMETHODCALLTYPE *)
+  (     IDirect3DDevice9      *This,
+   _In_ DWORD                  Sampler,
+  _Out_ IDirect3DBaseTexture9 *pTexture);
+
+using SetTexture_pfn = HRESULT (STDMETHODCALLTYPE *)
   (     IDirect3DDevice9      *This,
    _In_ DWORD                  Sampler,
    _In_ IDirect3DBaseTexture9 *pTexture);
 
-typedef HRESULT (STDMETHODCALLTYPE *SetSamplerState_pfn)
+using SetSamplerState_pfn = HRESULT (STDMETHODCALLTYPE *)
   (IDirect3DDevice9*   This,
    DWORD               Sampler,
    D3DSAMPLERSTATETYPE Type,
    DWORD               Value);
 
-typedef HRESULT (STDMETHODCALLTYPE *SetViewport_pfn)
+using SetViewport_pfn = HRESULT (STDMETHODCALLTYPE *)
   (      IDirect3DDevice9* This,
    CONST D3DVIEWPORT9*     pViewport);
 
-typedef HRESULT (STDMETHODCALLTYPE *SetRenderState_pfn)
+using SetRenderState_pfn = HRESULT (STDMETHODCALLTYPE *)
   (IDirect3DDevice9*  This,
    D3DRENDERSTATETYPE State,
    DWORD              Value);
 
-typedef HRESULT (STDMETHODCALLTYPE *SetVertexShaderConstantF_pfn)
+using SetVertexShaderConstantF_pfn = HRESULT (STDMETHODCALLTYPE *)
   (IDirect3DDevice9* This,
     UINT             StartRegister,
     CONST float*     pConstantData,
     UINT             Vector4fCount);
 
-typedef HRESULT (STDMETHODCALLTYPE *SetPixelShaderConstantF_pfn)
+using SetPixelShaderConstantF_pfn = HRESULT (STDMETHODCALLTYPE *)
   (IDirect3DDevice9* This,
     UINT             StartRegister,
     CONST float*     pConstantData,
@@ -823,21 +1037,21 @@ typedef HRESULT (STDMETHODCALLTYPE *SetPixelShaderConstantF_pfn)
 
 struct IDirect3DPixelShader9;
 
-typedef HRESULT (STDMETHODCALLTYPE *SetPixelShader_pfn)
+using SetPixelShader_pfn = HRESULT (STDMETHODCALLTYPE *)
   (IDirect3DDevice9*      This,
    IDirect3DPixelShader9* pShader);
 
 struct IDirect3DVertexShader9;
 
-typedef HRESULT (STDMETHODCALLTYPE *SetVertexShader_pfn)
+using SetVertexShader_pfn = HRESULT (STDMETHODCALLTYPE *)
   (IDirect3DDevice9*       This,
    IDirect3DVertexShader9* pShader);
 
-typedef HRESULT (STDMETHODCALLTYPE *SetScissorRect_pfn)
+using SetScissorRect_pfn = HRESULT (STDMETHODCALLTYPE *)
   (IDirect3DDevice9* This,
    CONST RECT*       pRect);
 
-typedef HRESULT (STDMETHODCALLTYPE *CreateTexture_pfn)
+using CreateTexture_pfn = HRESULT (STDMETHODCALLTYPE *)
   (IDirect3DDevice9   *This,
    UINT                Width,
    UINT                Height,
@@ -850,7 +1064,7 @@ typedef HRESULT (STDMETHODCALLTYPE *CreateTexture_pfn)
 
 struct IDirect3DSurface9;
 
-typedef HRESULT (STDMETHODCALLTYPE *CreateVertexBuffer_pfn)
+using CreateVertexBuffer_pfn = HRESULT (STDMETHODCALLTYPE *)
 (
   _In_  IDirect3DDevice9        *This,
   _In_  UINT                     Length,
@@ -861,7 +1075,7 @@ typedef HRESULT (STDMETHODCALLTYPE *CreateVertexBuffer_pfn)
   _In_  HANDLE                  *pSharedHandle
 );
 
-typedef HRESULT (STDMETHODCALLTYPE *SetStreamSource_pfn)
+using SetStreamSource_pfn = HRESULT (STDMETHODCALLTYPE *)
 (
   IDirect3DDevice9       *This,
   UINT                    StreamNumber,
@@ -870,25 +1084,25 @@ typedef HRESULT (STDMETHODCALLTYPE *SetStreamSource_pfn)
   UINT                    Stride
 );
 
-typedef HRESULT (STDMETHODCALLTYPE *SetStreamSourceFreq_pfn)
+using SetStreamSourceFreq_pfn = HRESULT (STDMETHODCALLTYPE *)
 ( _In_ IDirect3DDevice9 *This,
   _In_ UINT              StreamNumber,
   _In_ UINT              FrequencyParameter
 );
 
-typedef HRESULT (STDMETHODCALLTYPE *SetFVF_pfn)
+using SetFVF_pfn = HRESULT (STDMETHODCALLTYPE *)
 (
   IDirect3DDevice9 *This,
   DWORD             FVF
 );
 
-typedef HRESULT (STDMETHODCALLTYPE *SetVertexDeclaration_pfn)
+using SetVertexDeclaration_pfn = HRESULT (STDMETHODCALLTYPE *)
 (
   IDirect3DDevice9            *This,
   IDirect3DVertexDeclaration9 *pDecl
 );
 
-typedef HRESULT (STDMETHODCALLTYPE *CreateRenderTarget_pfn)
+using CreateRenderTarget_pfn = HRESULT (STDMETHODCALLTYPE *)
   (IDirect3DDevice9     *This,
    UINT                  Width,
    UINT                  Height,
@@ -899,7 +1113,7 @@ typedef HRESULT (STDMETHODCALLTYPE *CreateRenderTarget_pfn)
    IDirect3DSurface9   **ppSurface,
    HANDLE               *pSharedHandle);
 
-typedef HRESULT (STDMETHODCALLTYPE *CreateDepthStencilSurface_pfn)
+using CreateDepthStencilSurface_pfn = HRESULT (STDMETHODCALLTYPE *)
   (IDirect3DDevice9     *This,
    UINT                  Width,
    UINT                  Height,
@@ -910,23 +1124,23 @@ typedef HRESULT (STDMETHODCALLTYPE *CreateDepthStencilSurface_pfn)
    IDirect3DSurface9   **ppSurface,
    HANDLE               *pSharedHandle);
 
-typedef HRESULT (STDMETHODCALLTYPE *SetRenderTarget_pfn)
+using SetRenderTarget_pfn           = HRESULT (STDMETHODCALLTYPE *)
   (IDirect3DDevice9  *This,
    DWORD              RenderTargetIndex,
    IDirect3DSurface9 *pRenderTarget);
 
-typedef HRESULT (STDMETHODCALLTYPE *SetDepthStencilSurface_pfn)
+using SetDepthStencilSurface_pfn    = HRESULT (STDMETHODCALLTYPE *)
   (IDirect3DDevice9  *This,
    IDirect3DSurface9 *pNewZStencil);
 
 struct IDirect3DBaseTexture9;
 
-typedef HRESULT (STDMETHODCALLTYPE *UpdateTexture_pfn)
+using UpdateTexture_pfn             = HRESULT (STDMETHODCALLTYPE *)
   (IDirect3DDevice9      *This,
    IDirect3DBaseTexture9 *pSourceTexture,
    IDirect3DBaseTexture9 *pDestinationTexture);
 
-typedef HRESULT (STDMETHODCALLTYPE *StretchRect_pfn)
+using StretchRect_pfn               = HRESULT (STDMETHODCALLTYPE *)
   (      IDirect3DDevice9    *This,
          IDirect3DSurface9   *pSourceSurface,
    const RECT                *pSourceRect,
@@ -934,7 +1148,7 @@ typedef HRESULT (STDMETHODCALLTYPE *StretchRect_pfn)
    const RECT                *pDestRect,
          D3DTEXTUREFILTERTYPE Filter);
 
-typedef HRESULT (STDMETHODCALLTYPE *SetCursorPosition_pfn)
+using SetCursorPosition_pfn         = HRESULT (STDMETHODCALLTYPE *)
 (
        IDirect3DDevice9 *This,
   _In_ INT               X,
@@ -942,15 +1156,15 @@ typedef HRESULT (STDMETHODCALLTYPE *SetCursorPosition_pfn)
   _In_ DWORD             Flags
 );
 
-typedef HRESULT (STDMETHODCALLTYPE *TestCooperativeLevel_pfn)(IDirect3DDevice9* This);
+using TestCooperativeLevel_pfn      = HRESULT (STDMETHODCALLTYPE *)(IDirect3DDevice9* This);
 
-typedef HRESULT (STDMETHODCALLTYPE *BeginScene_pfn)
+using BeginScene_pfn                = HRESULT (STDMETHODCALLTYPE *)
   (IDirect3DDevice9* This);
 
-typedef HRESULT (STDMETHODCALLTYPE *EndScene_pfn)
+using EndScene_pfn                  = HRESULT (STDMETHODCALLTYPE *)
   (IDirect3DDevice9* This);
 
-typedef HRESULT (STDMETHODCALLTYPE *CreateVertexDeclaration_pfn)
+using CreateVertexDeclaration_pfn   = HRESULT (STDMETHODCALLTYPE *)
 (
         IDirect3DDevice9             *This,
   CONST D3DVERTEXELEMENT9            *pVertexElements,
@@ -958,11 +1172,30 @@ typedef HRESULT (STDMETHODCALLTYPE *CreateVertexDeclaration_pfn)
 );
 
 
-typedef HRESULT (STDMETHODCALLTYPE *GetSwapChain_pfn)
+using GetSwapChain_pfn              = HRESULT (STDMETHODCALLTYPE *)
   (IDirect3DDevice9* This, UINT iSwapChain, IDirect3DSwapChain9** pSwapChain);
 
-typedef HRESULT (STDMETHODCALLTYPE *CreateAdditionalSwapChain_pfn)
+using CreateAdditionalSwapChain_pfn = HRESULT (STDMETHODCALLTYPE *)
   (IDirect3DDevice9* This, D3DPRESENT_PARAMETERS* pPresentationParameters,
    IDirect3DSwapChain9** pSwapChain);
+
+
+
+
+std::wstring
+SK_D3D9_UsageToStr (DWORD dwUsage);
+
+std::wstring
+SK_D3D9_FormatToStr (D3DFORMAT Format, bool include_ordinal = true);
+
+const wchar_t*
+SK_D3D9_PoolToStr (D3DPOOL pool);
+
+std::wstring
+SK_D3D9_SwapEffectToStr (D3DSWAPEFFECT Effect);
+
+std::wstring
+SK_D3D9_PresentParameterFlagsToStr (DWORD dwFlags);
+
 
 #endif /* __SK__D3D9_BACKEND_H__ */
