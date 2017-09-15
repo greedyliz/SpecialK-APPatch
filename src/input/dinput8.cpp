@@ -18,8 +18,6 @@
  *   If not, see <http://www.gnu.org/licenses/>.
  *
 **/
-#define NOMINMAX
-#define _CRT_SECURE_NO_WARNINGS
 
 #include <Windows.h>
 
@@ -56,7 +54,7 @@
 extern bool nav_usable;
 
 
-typedef void (WINAPI *finish_pfn)(void);
+using finish_pfn = void (WINAPI *)(void);
 
 
 #define SK_DI8_READ(type)  SK_DI8_Backend.markRead  (type);
@@ -149,10 +147,10 @@ DirectInput8Create ( HINSTANCE hinst,
       {
         void** vftable = *(void***)*ppvOut;
         
-        SK_CreateFuncHook ( L"IDirectInput8::CreateDevice",
-                             vftable [3],
-                             IDirectInput8_CreateDevice_Detour,
-                   (LPVOID*)&IDirectInput8_CreateDevice_Original );
+        SK_CreateFuncHook (       L"IDirectInput8::CreateDevice",
+                                   vftable [3],
+                                   IDirectInput8_CreateDevice_Detour,
+          static_cast_p2p <void> (&IDirectInput8_CreateDevice_Original) );
         
         SK_EnableHook (vftable [3]);
       }
@@ -198,10 +196,10 @@ SK_BootDI8 (void)
 
 
     if ( MH_OK ==
-            SK_CreateDLLHook2 ( L"dinput8.dll",
-                                 "DirectInput8Create",
-                                  DirectInput8Create,
-     reinterpret_cast <LPVOID *>(&DirectInput8Create_Import) )
+            SK_CreateDLLHook2 (      L"dinput8.dll",
+                                      "DirectInput8Create",
+                                       DirectInput8Create,
+              static_cast_p2p <void> (&DirectInput8Create_Import) )
         )
     {
       if (bProxy)
@@ -426,75 +424,183 @@ SK_JOY_TranslateToXInput (JOYINFOEX* pJoy, const JOYCAPSW* pCaps)
   static DWORD dwPacket = 0;
 
   ZeroMemory (&joy_to_xi.Gamepad, sizeof (XINPUT_STATE::Gamepad));
+
+
+  auto ComputeAxialPos_XInput =
+    [ ] (UINT min, UINT max, DWORD pos) ->
+    SHORT
+  {
+    float range = ( static_cast <float> ( max ) - static_cast <float> ( min ) );
+    float center = ( static_cast <float> ( max ) + static_cast <float> ( min ) ) / 2.0f;
+    float rpos = 0.5f;
+
+    if (static_cast <float> ( pos ) < center)
+      rpos = center - ( center - static_cast <float> ( pos ) );
+    else
+      rpos = static_cast <float> ( pos ) - static_cast <float> ( min );
+
+    std::numeric_limits <unsigned short>::max ( );
+
+    float max_xi = static_cast <float> ( std::numeric_limits <unsigned short>::max ( ) );
+    float center_xi = static_cast <float> ( std::numeric_limits <unsigned short>::max ( ) / 2 );
+
+    return
+      static_cast <SHORT> ( max_xi * ( rpos / range ) - center_xi );
+  };
+
+  auto TestTriggerThreshold_XInput =
+    [ ] (UINT min, UINT max, float threshold, DWORD pos, bool& lt, bool& rt) ->
+    void
+  {
+    float range = ( static_cast <float> ( max ) - static_cast <float> ( min ) );
+
+    if (pos <= min + static_cast <UINT> ( threshold * range ))
+      rt = true;
+
+    if (pos >= max - static_cast <UINT> ( threshold * range ))
+      lt = true;
+  };
+
+  bool lt = false,
+       rt = false;
   
-  if (pJoy->dwButtons & (1 << 1))
-    joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_A;
-  if (pJoy->dwButtons & (1 << 2))
-    joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_B;
-  if (pJoy->dwButtons & 1)
-    joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_X;
-  if (pJoy->dwButtons & (1 << 3))
-    joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_Y;
+  switch (config.input.gamepad.predefined_layout)
+  {
+    case 0:
+      if (pJoy->dwButtons & (1 << 1))
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_A;
+      if (pJoy->dwButtons & (1 << 2))
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_B;
+      if (pJoy->dwButtons & 1)
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_X;
+      if (pJoy->dwButtons & (1 << 3))
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_Y;
 
-  if (pJoy->dwButtons & (1 << 9))
-    joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_START;
-  if (pJoy->dwButtons & (1 << 8))
-    joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_BACK;
+      if (pJoy->dwButtons & (1 << 9))
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_START;
+      if (pJoy->dwButtons & (1 << 8))
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_BACK;
 
-  if (pJoy->dwButtons & (1 << 10))
-    di8_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_LEFT_THUMB;
+      if (pJoy->dwButtons & (1 << 10))
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_LEFT_THUMB;
 
-  if (pJoy->dwButtons & (1 << 11))
-    di8_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_RIGHT_THUMB;
+      if (pJoy->dwButtons & (1 << 11))
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_RIGHT_THUMB;
 
-  if (pJoy->dwButtons & (1 << 6))
-    di8_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_LEFT_TRIGGER;
+      if (pJoy->dwButtons & (1 << 6))
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_LEFT_TRIGGER;
 
-  if (pJoy->dwButtons & (1 << 7))
-    di8_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_RIGHT_TRIGGER;
+      if (pJoy->dwButtons & (1 << 7))
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_RIGHT_TRIGGER;
 
-  if (pJoy->dwButtons & (1 << 4))
-    di8_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_LEFT_SHOULDER;
+      if (pJoy->dwButtons & (1 << 4))
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_LEFT_SHOULDER;
 
-  if (pJoy->dwButtons & (1 << 5))
-    di8_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_RIGHT_SHOULDER;
+      if (pJoy->dwButtons & (1 << 5))
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_RIGHT_SHOULDER;
 
-  //xi_state.Gamepad.bLeftTrigger =
-  //  UNX_PollAxis (gamepad.remap.buttons.LT, joy_ex, caps);
-  //
-  //xi_state.Gamepad.bRightTrigger =
-  //  UNX_PollAxis (gamepad.remap.buttons.RT, joy_ex, caps);
-  //
-  //if (UNX_PollAxis (gamepad.remap.buttons.LB, joy_ex, caps) > 190)
-  //  xi_state.Gamepad.wButtons |= XINPUT_GAMEPAD_LEFT_SHOULDER;
-  //if (UNX_PollAxis (gamepad.remap.buttons.RB, joy_ex, caps) > 190)
-  //  xi_state.Gamepad.wButtons |= XINPUT_GAMEPAD_RIGHT_SHOULDER;
-  //
-  //if (UNX_PollAxis (gamepad.remap.buttons.LS, joy_ex, caps) > 190)
-  //  xi_state.Gamepad.wButtons |= XINPUT_GAMEPAD_LEFT_THUMB;
-  //if (UNX_PollAxis (gamepad.remap.buttons.RS, joy_ex, caps) > 190)
-  //  xi_state.Gamepad.wButtons |= XINPUT_GAMEPAD_RIGHT_THUMB;
+      joy_to_xi.Gamepad.sThumbLX = ComputeAxialPos_XInput (pCaps->wXmin, pCaps->wXmax, pJoy->dwXpos);
+      joy_to_xi.Gamepad.sThumbLY = ComputeAxialPos_XInput (pCaps->wYmin, pCaps->wYmax, pJoy->dwYpos);
 
-  //joy_to_xi.Gamepad.sThumbLX      =  (SHORT)((float)MAXSHORT * (((float)(pJoy->dwXpos - (pCaps->wXmin + pCaps->wXmax)) /
-  //                                                               (float)(pCaps->wXmin + pCaps->wXmax))));
-  //joy_to_xi.Gamepad.sThumbLY      =  (SHORT)((float)MAXSHORT * (((float)(pJoy->dwYpos - (pCaps->wYmin + pCaps->wYmax)) /
-  //                                                               (float)(pCaps->wYmin + pCaps->wYmax))));
+      // Invert Y-Axis for Steam controller
+      joy_to_xi.Gamepad.sThumbLY = -joy_to_xi.Gamepad.sThumbLY;
 
-  //joy_to_xi.Gamepad.sThumbRX      =  (SHORT)((float)MAXSHORT * ((float)pJoy->dwZpos / 32767.0f));
-  //joy_to_xi.Gamepad.sThumbRY      = -(SHORT)((float)MAXSHORT * ((float)pJoy->dwRpos / 32767.0f));
-  //
-  //joy_to_xi.Gamepad.bLeftTrigger  =   (BYTE)((float)MAXBYTE  * ((float)pJoy->dwUpos / 255.0f));
-  //joy_to_xi.Gamepad.bRightTrigger =   (BYTE)((float)MAXBYTE  * ((float)pJoy->dwVpos / 255.0f));
+      joy_to_xi.Gamepad.sThumbRX = ComputeAxialPos_XInput (pCaps->wRmin, pCaps->wRmax, pJoy->dwRpos);
+      joy_to_xi.Gamepad.sThumbRY = ComputeAxialPos_XInput (pCaps->wUmin, pCaps->wUmax, pJoy->dwUpos);
 
+      TestTriggerThreshold_XInput (pCaps->wZmin, pCaps->wZmax, 0.00400f, pJoy->dwZpos, lt, rt);
 
+      if (lt)
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_LEFT_TRIGGER;
+      if (rt)
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_RIGHT_TRIGGER;
+      break;
+
+    case 1:
+      if (pJoy->dwButtons & (1 << 0))
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_A;
+      if (pJoy->dwButtons & (1 << 1))
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_B;
+      if (pJoy->dwButtons & (1 << 2))
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_X;
+      if (pJoy->dwButtons & (1 << 3))
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_Y;
+
+      if (pJoy->dwButtons & (1 << 4))
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_LEFT_SHOULDER;
+      if (pJoy->dwButtons & (1 << 5))
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_RIGHT_SHOULDER;
+
+      if (pJoy->dwButtons & (1 << 6))
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_BACK;
+      if (pJoy->dwButtons & (1 << 7))
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_START;
+
+      if (pJoy->dwButtons & (1 << 8))
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_LEFT_THUMB;
+
+      if (pJoy->dwButtons & (1 << 9))
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_RIGHT_THUMB;
+
+      if (pJoy->dwButtons & (1 << 10))
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_LEFT_TRIGGER;
+
+      if (pJoy->dwButtons & (1 << 11))
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_RIGHT_TRIGGER;
+
+      joy_to_xi.Gamepad.sThumbLX = ComputeAxialPos_XInput (pCaps->wXmin, pCaps->wXmax, pJoy->dwXpos);
+      joy_to_xi.Gamepad.sThumbLY = ComputeAxialPos_XInput (pCaps->wYmin, pCaps->wYmax, pJoy->dwYpos);
+
+      // Invert Y-Axis for Steam controller
+      joy_to_xi.Gamepad.sThumbLY = -joy_to_xi.Gamepad.sThumbLY;
+
+      joy_to_xi.Gamepad.sThumbRX = ComputeAxialPos_XInput (pCaps->wRmin, pCaps->wRmax, pJoy->dwRpos);
+      joy_to_xi.Gamepad.sThumbRY = ComputeAxialPos_XInput (pCaps->wUmin, pCaps->wUmax, pJoy->dwUpos);
+
+      TestTriggerThreshold_XInput (pCaps->wZmin, pCaps->wZmax, 0.00400f, pJoy->dwZpos, lt, rt);
+
+      if (lt)
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_LEFT_TRIGGER;
+      if (rt)
+        joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_RIGHT_TRIGGER;
+      break;
+  };
+
+  //joy_to_xi.Gamepad.bLeftTrigger  =   (BYTE)((float)MAXBYTE  * ((float)pJoy->dwZpos / 255.0f));
+  //joy_to_xi.Gamepad.bRightTrigger =  -(BYTE)((float)MAXBYTE  * ((float)pJoy->dwZpos / 255.0f));
+  //joy_to_xi.Gamepad.bLeftTrigger  =   (BYTE)((float)MAXBYTE  * ((float)pJoy->dwZpos / 255.0f));
+  //joy_to_xi.Gamepad.bRightTrigger =   (BYTE)((float)MAXBYTE  * ((float)pJoy->dwZpos / 255.0f));
+
+  // One-eighth of a full rotation
+  //DWORD JOY_OCTSPACE = JOY_POVRIGHT / 2;
+
+#if 0
+  // 315 - 45
+  if ( (pJoy->dwPOV >= JOY_POVLEFT   + JOY_OCTSPACE && pJoy->dwPOV != JOY_POVCENTERED) || pJoy->dwPOV <= JOY_POVRIGHT - JOY_OCTSPACE )
+    joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_DPAD_UP;
+
+  if (pJoy->dwPOV >= JOY_POVBACKWARD - JOY_OCTSPACE && pJoy->dwPOV <= JOY_POVBACKWARD + JOY_OCTSPACE)
+    joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_DPAD_DOWN;
+
+  if (pJoy->dwPOV >= JOY_POVLEFT     - JOY_OCTSPACE && pJoy->dwPOV <= JOY_POVLEFT     + JOY_OCTSPACE)
+    joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_DPAD_LEFT;
+
+  if (pJoy->dwPOV >= JOY_POVRIGHT    - JOY_OCTSPACE && pJoy->dwPOV <= JOY_POVRIGHT    + JOY_OCTSPACE)
+    joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_DPAD_RIGHT;
+#else
+  // 315 - 45
   if (pJoy->dwPOV == JOY_POVFORWARD)
     joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_DPAD_UP;
+
   if (pJoy->dwPOV == JOY_POVBACKWARD)
     joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_DPAD_DOWN;
+
   if (pJoy->dwPOV == JOY_POVLEFT)
     joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_DPAD_LEFT;
+
   if (pJoy->dwPOV == JOY_POVRIGHT)
     joy_to_xi.Gamepad.wButtons |= XINPUT_GAMEPAD_DPAD_RIGHT;
+#endif
 
   joy_to_xi.dwPacketNumber = dwPacket++;
 
@@ -595,9 +701,10 @@ IDirectInputDevice8_GetDeviceState_Detour ( LPDIRECTINPUTDEVICE        This,
       SK_DI8_READ (sk_input_dev_type::Gamepad)
       static DIJOYSTATE2 last_state;
 
-      DIJOYSTATE2* out = (DIJOYSTATE2 *)lpvData;
+      auto* out =
+        static_cast <DIJOYSTATE2 *> (lpvData);
 
-      SK_DI8_TranslateToXInput ((DIJOYSTATE *)out);
+      SK_DI8_TranslateToXInput (reinterpret_cast <DIJOYSTATE *> (out));
 
       if (nav_usable)
       {
@@ -619,7 +726,8 @@ IDirectInputDevice8_GetDeviceState_Detour ( LPDIRECTINPUTDEVICE        This,
 
       static DIJOYSTATE last_state;
 
-      DIJOYSTATE* out = (DIJOYSTATE *)lpvData;
+      auto* out =
+        static_cast <DIJOYSTATE *> (lpvData);
 
       SK_DI8_TranslateToXInput (out);
 
@@ -685,17 +793,17 @@ IDirectInputDevice8_GetDeviceState_Detour ( LPDIRECTINPUTDEVICE        This,
         switch (cbData)
         {
           case sizeof (DIMOUSESTATE2):
-            ((DIMOUSESTATE2 *)lpvData)->lX = 0;
-            ((DIMOUSESTATE2 *)lpvData)->lY = 0;
-            ((DIMOUSESTATE2 *)lpvData)->lZ = 0;
-            memset (((DIMOUSESTATE2 *)lpvData)->rgbButtons, 0, 8);
+            static_cast <DIMOUSESTATE2 *> (lpvData)->lX = 0;
+            static_cast <DIMOUSESTATE2 *> (lpvData)->lY = 0;
+            static_cast <DIMOUSESTATE2 *> (lpvData)->lZ = 0;
+            memset (static_cast <DIMOUSESTATE2 *> (lpvData)->rgbButtons, 0, 8);
             break;
 
           case sizeof (DIMOUSESTATE):
-            ((DIMOUSESTATE *)lpvData)->lX = 0;
-            ((DIMOUSESTATE *)lpvData)->lY = 0;
-            ((DIMOUSESTATE *)lpvData)->lZ = 0;
-            memset (((DIMOUSESTATE *)lpvData)->rgbButtons, 0, 4);
+            static_cast <DIMOUSESTATE *> (lpvData)->lX = 0;
+            static_cast <DIMOUSESTATE *> (lpvData)->lY = 0;
+            static_cast <DIMOUSESTATE *> (lpvData)->lZ = 0;
+            memset (static_cast <DIMOUSESTATE *> (lpvData)->rgbButtons, 0, 4);
             break;
         }
       }
@@ -847,7 +955,8 @@ IDirectInput8_CreateDevice_Detour ( IDirectInput8       *This,
 
   if (SUCCEEDED (hr))
   {
-    void** vftable = *(void***)*lplpDirectInputDevice;
+    void** vftable =
+      *reinterpret_cast <void ***> (*lplpDirectInputDevice);
 
     //
     // This weird hack is necessary for EverQuest; crazy game hooks itself to try and thwart
@@ -877,20 +986,20 @@ IDirectInput8_CreateDevice_Detour ( IDirectInput8       *This,
     */
     if (IDirectInputDevice8_GetDeviceState_GAMEPAD_Original == nullptr)
     {
-      SK_CreateFuncHook (   L"IDirectInputDevice8::GetDeviceState",
-                              vftable [9],
-                              IDirectInputDevice8_GetDeviceState_GAMEPAD_Detour,
-reinterpret_cast <LPVOID *> (&IDirectInputDevice8_GetDeviceState_GAMEPAD_Original) );
+      SK_CreateFuncHook (      L"IDirectInputDevice8::GetDeviceState",
+                                 vftable [9],
+                                 IDirectInputDevice8_GetDeviceState_GAMEPAD_Detour,
+        static_cast_p2p <void> (&IDirectInputDevice8_GetDeviceState_GAMEPAD_Original) );
       MH_QueueEnableHook (vftable [9]);
     }
     //}
 
     if (! IDirectInputDevice8_SetCooperativeLevel_Original)
     {
-      SK_CreateFuncHook (   L"IDirectInputDevice8::SetCooperativeLevel",
-                              vftable [13],
-                              IDirectInputDevice8_SetCooperativeLevel_Detour,
-reinterpret_cast <LPVOID *> (&IDirectInputDevice8_SetCooperativeLevel_Original) );
+      SK_CreateFuncHook (      L"IDirectInputDevice8::SetCooperativeLevel",
+                                 vftable [13],
+                                 IDirectInputDevice8_SetCooperativeLevel_Detour,
+        static_cast_p2p <void> (&IDirectInputDevice8_SetCooperativeLevel_Original) );
       MH_QueueEnableHook (vftable [13]);
     }
 
@@ -925,7 +1034,7 @@ SK_Input_HookDI8 (void)
 
   static volatile LONG hooked = FALSE;
 
-  if (! InterlockedExchangeAdd (&hooked, 0))
+  if (! InterlockedExchangeAdd (&hooked, 1))
   {
     SK_LOG0 ( ( L"Game uses DirectInput, installing input hooks..." ),
                   L"   Input  " );
@@ -934,13 +1043,11 @@ SK_Input_HookDI8 (void)
       (SK_GetDLLRole () & DLL_ROLE::DInput8) ? backend_dll :
                                       GetModuleHandle (L"dinput8.dll");
 
-    SK_CreateFuncHook (     L"DirectInput8Create",
-            GetProcAddress ( hBackend,
-                             "DirectInput8Create" ),
-                              DirectInput8Create,
-reinterpret_cast <LPVOID *> (&DirectInput8Create_Import) );
-
-    InterlockedIncrement (&hooked);
+    SK_CreateFuncHook (      L"DirectInput8Create",
+             GetProcAddress ( hBackend,
+                              "DirectInput8Create" ),
+                               DirectInput8Create,
+      static_cast_p2p <void> (&DirectInput8Create_Import) );
   }
 }
 

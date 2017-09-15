@@ -19,14 +19,12 @@
  *
 **/
 
-#define _CRT_SECURE_NO_WARNINGS
-#define NOMINMAX
-
 #include <imgui/imgui.h>
 #include <imgui/backends/imgui_gl3.h>
 #include <imgui/backends/imgui_d3d9.h>
 #include <imgui/backends/imgui_d3d11.h>
 #include <imgui/widgets/msgbox.h>
+#include <SpecialK/render_backend.h>
 
 #include <SpecialK/widgets/widget.h>
 #include <d3d9.h>
@@ -36,6 +34,7 @@
 #include <SpecialK/DLL_VERSION.H>
 #include <SpecialK/command.h>
 #include <SpecialK/console.h>
+#include <SpecialK/utility.h>
 
 #include <SpecialK/window.h>
 #include <SpecialK/log.h>
@@ -43,6 +42,8 @@
 
 #include <SpecialK/render_backend.h>
 #include <SpecialK/dxgi_backend.h>
+#include <SpecialK/d3d9_backend.h>
+#include <SpecialK/D3D9/texmgr.h>
 #include <SpecialK/sound.h>
 
 #include <SpecialK/update/version.h>
@@ -63,6 +64,9 @@
 #include <windows.h>
 #include <cstdio>
 #include <memory>
+#include <string>
+#include <sstream>
+#include <vector>
 #include <typeindex>
 
 #include "resource.h"
@@ -92,8 +96,11 @@ extern void     __stdcall SK_FAR_ControlPanel  (void);
 extern GetCursorInfo_pfn GetCursorInfo_Original;
        bool              cursor_vis      = false;
 
-       bool              show_shader_mod_dlg;
+       bool              show_shader_mod_dlg      = false;
 extern bool              SK_D3D11_ShaderModDlg (void);
+
+       bool              show_d3d9_shader_mod_dlg = false;
+extern bool              SK_D3D9_TextureModDlg (void);
 
 std::wstring
 SK_NvAPI_GetGPUInfoStr (void);
@@ -160,6 +167,8 @@ extern void SK_Steam_SetNotifyCorner (void);
 
 extern void __stdcall SK_ImGui_DrawEULA (LPVOID reserved);
 extern bool           SK_ImGui_Visible;
+       bool           SK_ReShade_Visible        = false;
+       bool           SK_ControlPanel_Activated = false;
 
 extern void
 __stdcall
@@ -192,8 +201,6 @@ namespace SK_ImGui
   bool
   VerticalToggleButton (const char *text, bool *v)
   {
-    using namespace ImGui;
-
           ImFont        *font      = GImGui->Font;
     const ImFont::Glyph *glyph     = nullptr;
           char           c         = 0;
@@ -203,11 +210,11 @@ namespace SK_ImGui
           float          pad       = style.FramePadding.x;
           ImVec4         color     = { };
     const char*          hash_mark = strstr (text, "##");
-          ImVec2         text_size = CalcTextSize     (text, hash_mark);
-          ImGuiWindow*   window    = GetCurrentWindow ();
+          ImVec2         text_size = ImGui::CalcTextSize     (text, hash_mark);
+          ImGuiWindow*   window    = ImGui::GetCurrentWindow ();
           ImVec2         pos       = ImVec2 ( window->DC.CursorPos.x + pad,
                                               window->DC.CursorPos.y + text_size.x + pad );
-    
+
     const ImU32 text_color =
       ImGui::ColorConvertFloat4ToU32 (style.Colors [ImGuiCol_Text]);
 
@@ -303,12 +310,29 @@ namespace SK_ImGui
 } // namespace SK_ImGui
 
 bool
+SK_ImGui_IsItemClicked (void)
+{
+  if (ImGui::IsItemClicked ())
+    return true;
+
+  if (ImGui::IsItemHovered ())
+  {
+    if (ImGui::GetIO ().NavInputsDownDuration [ImGuiNavInput_PadActivate] == 0.0f)
+    {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool
 SK_ImGui_IsItemRightClicked (ImGuiIO& io = ImGui::GetIO ())
 {
   if (ImGui::IsItemClicked (1))
     return true;
 
-  if (ImGui::IsItemFocused ())
+  if (ImGui::IsItemHovered ())
   {
     if (io.NavInputsDownDuration [ImGuiNavInput_PadActivate] > 0.4f)
     {
@@ -349,8 +373,8 @@ SK_ImGui_UpdateCursor (void)
   SetCursorPos_Original (orig_pos.x, orig_pos.y);
 }
 
-ImVec2 SK_ImGui_LastWindowCenter (-1.0f, -1.0f);
-void   SK_ImGui_CenterCursorOnWindow (void);
+ImVec2 SK_ImGui_LastWindowCenter  (-1.0f, -1.0f);
+void   SK_ImGui_CenterCursorAtPos (ImVec2 center = SK_ImGui_LastWindowCenter);
 
 const char*
 SK_ImGui_ControlPanelTitle (void)
@@ -521,7 +545,7 @@ SK_ImGui_SelectAudioSessionDlg (void)
           volume_ctl->GetMasterVolume (&volume);
 
           char      szLabel [32] = { };
-          snprintf (szLabel, 31, "###VoumeSlider%i", i);
+          snprintf (szLabel, 31, "###VolumeSlider%i", i);
 
           ImGui::PushStyleColor (ImGuiCol_Text,           mute ? ImColor (0.5f, 0.5f, 0.5f) : ImColor (1.0f, 1.0f, 1.0f));
           ImGui::PushStyleColor (ImGuiCol_FrameBg,        ImColor::HSV ( 0.4f * volume, 0.6f, mute ? 0.2f : 0.4f));
@@ -606,10 +630,10 @@ bool reset_frame_history = true;
 bool was_reset           = false;
 
 
-class SK_ImGui_FrameHistory : public SK_ImGui_DataHistory <float, 120>
+class SK_ImGui_FrameHistory : public SK_Stat_DataHistory <float, 120>
 {
 public:
-  void timeFrame      (double seconds)
+  void timeFrame       (double seconds)
   {
     addValue ((float)(1000.0 * seconds));
   }
@@ -634,8 +658,11 @@ SK_PlugIn_ControlPanelWidget (void)
 void
 DisplayModeMenu (bool windowed)
 {
-  if (! ( ((int)SK_GetCurrentRenderBackend ().api & (int)SK_RenderAPI::D3D9) ||
-          ((int)SK_GetCurrentRenderBackend ().api & (int)SK_RenderAPI::D3D11) ) )
+  SK_RenderBackend& rb =
+    SK_GetCurrentRenderBackend ();
+
+  if (! ( (static_cast <int> (rb.api) & static_cast <int> (SK_RenderAPI::D3D9)  ) ||
+          (static_cast <int> (rb.api) & static_cast <int> (SK_RenderAPI::D3D11) ) ) )
     return;
 
   enum {
@@ -657,7 +684,7 @@ DisplayModeMenu (bool windowed)
     {
       case DISPLAY_MODE_WINDOWED:
       {
-        SK_GetCurrentRenderBackend ().requestWindowedMode (force);
+        rb.requestWindowedMode (force);
 
         bool borderless = config.window.borderless;
         bool fullscreen = config.window.fullscreen;
@@ -679,7 +706,7 @@ DisplayModeMenu (bool windowed)
       default:
       case DISPLAY_MODE_FULLSCREEN:
       {
-        SK_GetCurrentRenderBackend ().requestFullscreenMode (force);
+        rb.requestFullscreenMode (force);
       } break;
     }
   }
@@ -707,7 +734,7 @@ DisplayModeMenu (bool windowed)
     }
   }
 
-  if ((int)SK_GetCurrentRenderBackend ().api & (int)SK_RenderAPI::D3D11)
+  if (static_cast <int> (rb.api) & static_cast <int> (SK_RenderAPI::D3D11))
   {
     if (mode == DISPLAY_MODE_FULLSCREEN)
     {
@@ -735,7 +762,7 @@ DisplayModeMenu (bool windowed)
             break;
         }
 
-        SK_GetCurrentRenderBackend ().requestFullscreenMode (force);
+        rb.requestFullscreenMode (force);
       }
 
       if (ImGui::IsItemHovered ())
@@ -749,7 +776,7 @@ DisplayModeMenu (bool windowed)
     }
   }
 
-  if (! SK_GetCurrentRenderBackend ().fullscreen_exclusive)
+  if (! rb.fullscreen_exclusive)
   {
     mode      = config.window.borderless ? config.window.fullscreen ? 2 : 1 : 0;
     orig_mode = mode;
@@ -824,18 +851,12 @@ SK_ImGui_NV_DepthBoundsD3D11 (void)
   if (changed)
   {
     NvAPI_D3D11_SetDepthBoundsTest ( SK_GetCurrentRenderBackend ().device,
-                                     enable ? 0x1 : 0x0,
-                                     fMin, fMax );
+                                       enable ? 0x1 : 0x0,
+                                         fMin, fMax );
   }
 }
 
 extern float target_fps;
-
-
-void
-SK_ImGui_DrawGraph_CPU (void)
-{
-}
 
 void
 SK_ImGui_DrawGraph_FramePacing (void)
@@ -888,7 +909,7 @@ SK_ImGui_DrawGraph_FramePacing (void)
         ( szAvg,
             512,
               u8"Avg milliseconds per-frame: %6.3f  (Target: %6.3f)\n"
-              u8"    Extreme frametimes:      %6.3f min, %6.3f max\n\n\n\n"
+              u8"    Extreme frame times:     %6.3f min, %6.3f max\n\n\n\n"
               u8"Variation:  %8.5f ms        %.1f FPS  ±  %3.1f frames",
                 sum / frames,
                   target_frametime,
@@ -1032,6 +1053,14 @@ SK_ImGui_VolumeManager (void)
     ImGui::PushItemWidth (-1);
     if (ImGui::Button (u8"  <<  "))
     {
+      ISteamMusic* pMusic =
+        SK_SteamAPI_Music ();
+
+      if (pMusic && pMusic->BIsEnabled ())
+      {
+        if (pMusic->BIsPlaying ()) pMusic->PlayPrevious ();
+      }
+
       keybd_event_Original (VK_MEDIA_PREV_TRACK, 0, KEYEVENTF_EXTENDEDKEY,                   0);
       keybd_event_Original (VK_MEDIA_PREV_TRACK, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0);
     }
@@ -1040,6 +1069,16 @@ SK_ImGui_VolumeManager (void)
 
     if (ImGui::Button (u8"  Play / Pause  "))
     {
+      ISteamMusic* pMusic =
+        SK_SteamAPI_Music ();
+
+      if (pMusic && pMusic->BIsEnabled ())
+      {
+        if (pMusic->BIsPlaying ()) pMusic->Pause ();
+        else                       pMusic->Play  ();
+      }
+
+
       keybd_event_Original (VK_MEDIA_PLAY_PAUSE, 0, KEYEVENTF_EXTENDEDKEY,                   0);
       keybd_event_Original (VK_MEDIA_PLAY_PAUSE, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0); 
     }
@@ -1048,6 +1087,15 @@ SK_ImGui_VolumeManager (void)
 
     if (ImGui::Button (u8"  >>  "))
     {
+      ISteamMusic* pMusic =
+        SK_SteamAPI_Music ();
+
+      if (pMusic && pMusic->BIsEnabled ())
+      {
+        if (pMusic->BIsPlaying ()) pMusic->PlayNext ();
+      }
+
+
       keybd_event_Original (VK_MEDIA_NEXT_TRACK, 0, KEYEVENTF_EXTENDEDKEY,                   0);
       keybd_event_Original (VK_MEDIA_NEXT_TRACK, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0);
     }
@@ -1177,7 +1225,7 @@ SK_ImGui_VolumeManager (void)
           history [i].vu_peaks.inst_min = std::min (history [i].vu_peaks.inst_min, channel_peaks_ [i]);
           history [i].vu_peaks.inst_max = std::max (history [i].vu_peaks.inst_max, channel_peaks_ [i]);
 
-          history [i].vu_peaks.disp_min    = history [i].vu_peaks.inst_min;
+          history [i].vu_peaks.disp_min      = history [i].vu_peaks.inst_min;
 
           if (history [i].vu_peaks.dwMinSample < timeGetTime () - VUMETER_TIME * 3)
           {
@@ -1185,7 +1233,7 @@ SK_ImGui_VolumeManager (void)
             history [i].vu_peaks.dwMinSample = timeGetTime ();
           }
 
-          history [i].vu_peaks.disp_max    = history [i].vu_peaks.inst_max;
+          history [i].vu_peaks.disp_max      = history [i].vu_peaks.inst_max;
 
           if (history [i].vu_peaks.dwMaxSample < timeGetTime () - VUMETER_TIME * 3)
           {
@@ -1197,7 +1245,7 @@ SK_ImGui_VolumeManager (void)
 
           if (i & 0x1)
           {
-            history [i].current_idx = (history [i].current_idx - 1);
+            history [i].current_idx          = (history [i].current_idx - 1);
 
             if (history [i].current_idx < 0)
                 history [i].current_idx = IM_ARRAYSIZE (history [i].peaks) - 1;
@@ -1205,7 +1253,7 @@ SK_ImGui_VolumeManager (void)
 
           else
           {
-            history [i].current_idx = (history [i].current_idx + 1) % IM_ARRAYSIZE (history [i].peaks);
+            history [i].current_idx           = (history [i].current_idx + 1) % IM_ARRAYSIZE (history [i].peaks);
           }
 
           ImGui::BeginGroup ();
@@ -1313,13 +1361,13 @@ SK_ImGui_VolumeManager (void)
                                                ImVec2 (ImGui::GetContentRegionAvailWidth (), ht) );
           ImGui::PopStyleColor  ();
 
-          ImGui::PushStyleColor (ImGuiCol_PlotHistogram,     ImVec4 (0.9f, 0.1f, 0.1f, 0.15f));
+          ImGui::PushStyleColor (ImGuiCol_PlotHistogram,        ImVec4 (0.9f, 0.1f, 0.1f, 0.15f));
           ImGui::ProgressBar    (history [i].vu_peaks.disp_max, ImVec2 (-1.0f, 0.0f));
           ImGui::PopStyleColor  ();
 
-          ImGui::ProgressBar    (channel_peaks_ [i],          ImVec2 (-1.0f, 0.0f));
+          ImGui::ProgressBar    (channel_peaks_ [i],            ImVec2 (-1.0f, 0.0f));
 
-          ImGui::PushStyleColor (ImGuiCol_PlotHistogram,     ImVec4 (0.1f, 0.1f, 0.9f, 0.15f));
+          ImGui::PushStyleColor (ImGuiCol_PlotHistogram,        ImVec4 (0.1f, 0.1f, 0.9f, 0.15f));
           ImGui::ProgressBar    (history [i].vu_peaks.disp_min, ImVec2 (-1.0f, 0.0f));
           ImGui::PopStyleColor  ();
           ImGui::EndGroup       ();
@@ -1353,8 +1401,9 @@ __declspec (dllexport)
 bool
 SK_ImGui_ControlPanel (void)
 {
-  ImGuiIO& io (ImGui::GetIO ());
+  static bool want_exit = false;
 
+  ImGuiIO& io (ImGui::GetIO ());
 
   if (ImGui::GetFont () == nullptr)
   {
@@ -1399,12 +1448,55 @@ SK_ImGui_ControlPanel (void)
       {
         bool selected = false;
 
+        static HMODULE hModReShade =
+#ifdef _WIN64
+          GetModuleHandle (L"ReShade64.dll");
+#else
+          GetModuleHandle (L"ReShade32.dll");
+#endif
+        static bool bIsReShadeCustom =
+                          hModReShade != 0 &&
+#ifndef _WIN64
+          GetProcAddress (hModReShade, "?SK_ImGui_DrawCallback@@YGIPAX@Z");
+#else
+          GetProcAddress (hModReShade, "?SK_ImGui_DrawCallback@@YAIPEAX@Z");
+#endif
+
+
         if (ImGui::MenuItem ( "Browse Logs", "", &selected ))
         {
           std::wstring log_dir =
             std::wstring (SK_GetConfigPath ()) + std::wstring (L"\\logs");
 
           ShellExecuteW (GetActiveWindow (), L"explore", log_dir.c_str (), nullptr, nullptr, SW_NORMAL);
+        }
+
+        if (bIsReShadeCustom && ImGui::MenuItem ( "Browse ReShade Assets", "", nullptr ))
+        {
+          std::wstring reshade_dir =
+            std::wstring (SK_GetConfigPath ()) + std::wstring (L"\\ReShade");
+
+          static bool dir_exists =
+            PathIsDirectory ( std::wstring (
+                                std::wstring ( SK_GetConfigPath () ) +
+                                  L"\\ReShade\\Shaders\\"
+                              ).c_str () );
+
+          if (! dir_exists)
+          {
+            SK_CreateDirectories ( std::wstring (
+                                     std::wstring ( SK_GetConfigPath () ) +
+                                       L"\\ReShade\\Shaders\\"
+                                   ).c_str () );
+            SK_CreateDirectories ( std::wstring (
+                                     std::wstring ( SK_GetConfigPath () ) +
+                                       L"\\ReShade\\Textures\\"
+                                   ).c_str () );
+
+            dir_exists = true;
+          }
+
+          ShellExecuteW (GetActiveWindow (), L"explore", reshade_dir.c_str (), nullptr, nullptr, SW_NORMAL);
         }
 
         ImGui::Separator ();
@@ -1434,9 +1526,15 @@ SK_ImGui_ControlPanel (void)
           }
         }
 
+        ImGui::Separator ();
+
+        if (ImGui::MenuItem ("Exit Game", "Alt+F4"))
+        {
+          want_exit = true;
+        }
+
         ImGui::EndMenu  ();
       }
-
 
       if (ImGui::BeginMenu ("Display"))
       {
@@ -1552,7 +1650,7 @@ SK_ImGui_ControlPanel (void)
         }
 
         snprintf        (current_ver, 127, "%ws (%li)", vinfo_latest.package.c_str (), vinfo_latest.build);
-        ImGui::MenuItem ("Latest Version###Menu_LatestVersion",   current_ver,    &selected, false);
+        ImGui::MenuItem ("Latest Version###Menu_LatestVersion",   current_ver,                                                      &selected, false);
         ImGui::MenuItem ("Last Checked###Menu_LastUpdateCheck",   SK_WideCharToUTF8 (SK_Version_GetLastCheckTime_WStr ()).c_str (), &selected, false);
 
         enum {
@@ -1666,7 +1764,8 @@ SK_ImGui_ControlPanel (void)
           if (ImGui::IsItemHovered ())
           {
             ImGui::BeginTooltip ();
-            ImGui::Text         ("%lu-Bit Injection History", sizeof (uintptr_t) == 4 ? 32 : 64);
+            ImGui::Text         ("%lu-Bit Injection History", sizeof (uintptr_t) == 4 ? 32 :
+                                                                                        64);
             ImGui::Separator    ();
 
             int count = InterlockedAdd (&SK_InjectionRecord_s::count, 0UL);
@@ -1802,7 +1901,7 @@ SK_ImGui_ControlPanel (void)
 
 
   const char* szTitle     = SK_ImGui_ControlPanelTitle ();
-  static int  title_len   = int ((float)ImGui::CalcTextSize (szTitle).x * 1.075f);
+  static int  title_len   = int (static_cast <float> (ImGui::CalcTextSize (szTitle).x) * 1.075f);
   static bool first_frame = true;
   bool        open        = true;
 
@@ -1825,10 +1924,10 @@ SK_ImGui_ControlPanel (void)
   ImGuiStyle& style =
     ImGui::GetStyle ();
 
-  ImGuiStyle orig = style;
-
   style.WindowTitleAlign =
     ImVec2 (0.5f, 0.5f);
+
+  ImGuiStyle orig = style;
 
   style.WindowMinSize.x = title_len * 1.075f * io.FontGlobalScale;
   style.WindowMinSize.y = 200;
@@ -1857,16 +1956,26 @@ SK_ImGui_ControlPanel (void)
     }
   }
 
+  SK_RenderBackend& rb =
+    SK_GetCurrentRenderBackend ();
+
           char szAPIName [32] = { };
-    snprintf ( szAPIName, 32, "%ws",  SK_GetCurrentRenderBackend ().name );
+    snprintf ( szAPIName, 32, "%ws",  rb.name );
 
     // Translation layers (D3D8->11 / DDraw->11 / D3D11On12)
-    int api_mask = (int)SK_GetCurrentRenderBackend ().api;
+    int api_mask = static_cast <int> (rb.api);
 
-    if ((api_mask & (int)SK_RenderAPI::D3D12)      != 0x0 && api_mask != (int)SK_RenderAPI::D3D12)
+    if ( (api_mask &  static_cast <int> (SK_RenderAPI::D3D12))      != 0x0 && 
+          api_mask != static_cast <int> (SK_RenderAPI::D3D12) )
+    {
       lstrcatA (szAPIName,   "On12");
-    else if ((api_mask & (int)SK_RenderAPI::D3D11) != 0x0 && api_mask != (int)SK_RenderAPI::D3D11)
+    }
+
+    else if ( (api_mask &  static_cast <int> (SK_RenderAPI::D3D11)) != 0x0 && 
+               api_mask != static_cast <int> (SK_RenderAPI::D3D11) )
+    {
       lstrcatA (szAPIName, u8"→11" );
+    }
 
 #ifndef _WIN64
     lstrcatA (szAPIName, "    [ 32-bit ]");
@@ -1882,9 +1991,9 @@ SK_ImGui_ControlPanel (void)
       ImGui::SetNextWindowSize (ImVec2 (-1.0f, -1.0f), ImGuiSetCond_Always);
     }
 
-    if (ImGui::BeginPopup ("RenderSubMenu"))
+    if (ImGui::BeginPopup      ("RenderSubMenu"))
     {
-      DisplayMenu ();
+      DisplayMenu     ();
       ImGui::EndPopup ();
     }
 
@@ -1892,27 +2001,27 @@ SK_ImGui_ControlPanel (void)
 
     char szResolution [128] = { };
 
-    bool sRGB     = SK_GetCurrentRenderBackend ().framebuffer_flags & SK_FRAMEBUFFER_FLAG_SRGB;
+    bool sRGB     = rb.framebuffer_flags & SK_FRAMEBUFFER_FLAG_SRGB;
     bool override = false;
 
     RECT client;
     GetClientRect (game_window.hWnd, &client);
 
-    if ( (LONG)io.DisplayFramebufferScale.x != client.right  - client.left ||
-         (LONG)io.DisplayFramebufferScale.y != client.bottom - client.top  ||
+    if ( static_cast <int> (io.DisplayFramebufferScale.x) != client.right  - client.left ||
+         static_cast <int> (io.DisplayFramebufferScale.y) != client.bottom - client.top  ||
          sRGB )
     {
       snprintf ( szResolution, 63, "   %lux%lu", 
-                   (UINT)io.DisplayFramebufferScale.x,
-                   (UINT)io.DisplayFramebufferScale.y );
+                   static_cast <UINT> (io.DisplayFramebufferScale.x),
+                   static_cast <UINT> (io.DisplayFramebufferScale.y) );
 
       if (sRGB)
         strcat (szResolution, "    (sRGB)");
 
       if (ImGui::MenuItem (" Framebuffer Resolution", szResolution))
       {
-        config.window.res.override.x = (UINT)io.DisplayFramebufferScale.x;
-        config.window.res.override.y = (UINT)io.DisplayFramebufferScale.y;
+        config.window.res.override.x = static_cast <UINT> (io.DisplayFramebufferScale.x);
+        config.window.res.override.y = static_cast <UINT> (io.DisplayFramebufferScale.y);
 
         override = true;
       }
@@ -1941,6 +2050,80 @@ SK_ImGui_ControlPanel (void)
         config.window.res.override.y = client.bottom - client.top;
 
         override = true;
+      }
+    }
+
+    if (ImGui::IsItemHovered ())
+    {
+      if (static_cast <int> (rb.api) & static_cast <int> (SK_RenderAPI::D3D9))
+      {
+        CComPtr <IDirect3DDevice9> pDev9 = nullptr;
+
+        if (SUCCEEDED (rb.device->QueryInterface <IDirect3DDevice9> (&pDev9)))
+        {
+          CComPtr <IDirect3DSwapChain9> pSwap9 = nullptr;
+
+          if (rb.swapchain != nullptr)
+          {
+            rb.swapchain->QueryInterface <IDirect3DSwapChain9> (&pSwap9);
+          }
+
+          if (pSwap9 != nullptr)
+          {
+            D3DPRESENT_PARAMETERS pparams = { };
+
+            if (SUCCEEDED (pSwap9->GetPresentParameters (&pparams)))
+            {
+              ImGui::BeginTooltip    ();
+              ImGui::PushStyleColor  (ImGuiCol_Text, ImColor (0.95f, 0.95f, 0.45f));
+              ImGui::TextUnformatted ("Framebuffer and Presentation Setup");
+              ImGui::PopStyleColor   ();
+              ImGui::Separator       ();
+
+              ImGui::BeginGroup      ();
+              ImGui::PushStyleColor  (ImGuiCol_Text, ImColor (0.785f, 0.785f, 0.785f));
+              ImGui::TextUnformatted ("Color:");
+              ImGui::TextUnformatted ("Depth/Stencil:");
+              ImGui::TextUnformatted ("Resolution:");
+              ImGui::TextUnformatted ("Back Buffers:");
+              if (! pparams.Windowed)
+              ImGui::TextUnformatted ("Refresh Rate:");
+              ImGui::TextUnformatted ("Swap Interval:");
+              ImGui::TextUnformatted ("Swap Effect:");
+              ImGui::TextUnformatted ("MSAA Samples:");
+              if (pparams.Flags != 0)
+              ImGui::TextUnformatted ("Flags:");
+              ImGui::PopStyleColor   ();
+              ImGui::EndGroup        ();
+
+              ImGui::SameLine        ();
+
+              ImGui::BeginGroup      ();
+              ImGui::PushStyleColor  (ImGuiCol_Text, ImColor (1.0f, 1.0f, 1.0f));
+              ImGui::Text            ("%ws",                SK_D3D9_FormatToStr (pparams.BackBufferFormat).c_str       ());
+              ImGui::Text            ("%ws",                SK_D3D9_FormatToStr (pparams.AutoDepthStencilFormat).c_str ());
+              ImGui::Text            ("%ux%u",                                   pparams.BackBufferWidth, pparams.BackBufferHeight);
+              ImGui::Text            ("%u",                                      pparams.BackBufferCount);
+              if (! pparams.Windowed)
+              ImGui::Text            ("%u Hz",                                   pparams.FullScreen_RefreshRateInHz);
+              if (pparams.PresentationInterval == 1)
+                ImGui::Text          ("%u: Normal V-SYNC",                       pparams.PresentationInterval);
+              if (pparams.PresentationInterval == 2)
+                ImGui::Text          ("%u: 1/2 Refresh V-SYNC",                  pparams.PresentationInterval);
+              if (pparams.PresentationInterval == 3)
+                ImGui::Text          ("%u: 1/3 Refresh V-SYNC",                  pparams.PresentationInterval);
+              if (pparams.PresentationInterval == 4)
+                ImGui::Text          ("%u: 1/4 Refresh V-SYNC",                  pparams.PresentationInterval);
+              ImGui::Text            ("%ws",            SK_D3D9_SwapEffectToStr (pparams.SwapEffect).c_str ());
+              ImGui::Text            ("%u",                                      pparams.MultiSampleType);
+              if (pparams.Flags != 0)
+              ImGui::Text            ("%ws", SK_D3D9_PresentParameterFlagsToStr (pparams.Flags).c_str ()) ;
+              ImGui::PopStyleColor   ();
+              ImGui::EndGroup        ();
+              ImGui::EndTooltip      ();
+            }
+          }
+        }
       }
     }
 
@@ -1988,10 +2171,10 @@ SK_ImGui_ControlPanel (void)
     {
       char szGSyncStatus [128] = { };
 
-      if (SK_GetCurrentRenderBackend ().gsync_state.capable)
+      if (rb.gsync_state.capable)
       {
         strcat (szGSyncStatus, "Supported + ");
-        if (SK_GetCurrentRenderBackend ().gsync_state.active)
+        if (rb.gsync_state.active)
           strcat (szGSyncStatus, "Active");
         else
           strcat (szGSyncStatus, "Inactive");
@@ -2028,6 +2211,109 @@ SK_ImGui_ControlPanel (void)
 
 
     SK_PlugIn_ControlPanelWidget ();
+
+
+#ifdef _WIN64
+    if (SK_GetCurrentGameID () == SK_GAME_ID::GalGun_Double_Peace)
+    {
+      if (ImGui::CollapsingHeader ("Gal*Gun: Double Peace", ImGuiTreeNodeFlags_DefaultOpen))
+      {
+        static bool emperor_has_no_clothes = false;
+
+        ImGui::TreePush ("");
+
+        if (ImGui::Checkbox ("The emperor of Japan has no clothes", &emperor_has_no_clothes))
+        {
+          const uint32_t ps_primary = 0x9b826e8a;
+          const uint32_t vs_outline = 0x2e1993cf;
+
+          if (emperor_has_no_clothes)
+          {
+            SK::D3D9::Shaders.vertex.blacklist.emplace (vs_outline);
+            SK::D3D9::Shaders.pixel.blacklist.emplace  (ps_primary);
+          }
+
+          else
+          {
+            SK::D3D9::Shaders.vertex.blacklist.erase (vs_outline);
+            SK::D3D9::Shaders.pixel.blacklist.erase  (ps_primary);
+          }
+        }
+
+        if (ImGui::IsItemHovered ())
+          ImGui::SetTooltip ( emperor_has_no_clothes ? "And neither do the girls in this game!" :
+                                                       "But the prudes in this game do." );
+
+        ImGui::TreePop ();
+      }
+    }
+
+    if (SK_GetCurrentGameID () == SK_GAME_ID::LifeIsStrange_BeforeTheStorm)
+    {
+      if (ImGui::CollapsingHeader ("Life is Strange: Before the Storm", ImGuiTreeNodeFlags_DefaultOpen))
+      {
+        static bool evil          = false;
+        static bool even_stranger = false;
+        static bool wired         = false;
+
+        const uint32_t vs_eyes = 0x223ccf2d;
+        const uint32_t ps_face = 0xbde11248;
+        const uint32_t ps_skin = 0xa79e425c;
+
+        ImGui::TreePush ("");
+
+        if (ImGui::Checkbox ("Life is Wired", &wired))
+        {
+          if (wired)
+          {
+            SK_D3D11_Shaders.pixel.wireframe.emplace (ps_skin);
+            SK_D3D11_Shaders.pixel.wireframe.emplace (ps_face);
+          }
+
+          else
+          {
+            SK_D3D11_Shaders.pixel.wireframe.erase (ps_skin);
+            SK_D3D11_Shaders.pixel.wireframe.erase (ps_face);
+          }
+        }
+
+        if (ImGui::Checkbox ("Life is Evil", &evil))
+        {
+          if (evil)
+          {
+            SK_D3D11_Shaders.vertex.blacklist.emplace (vs_eyes);
+          }
+
+          else
+          {
+            SK_D3D11_Shaders.vertex.blacklist.erase (vs_eyes);
+          }
+        }
+
+        if (ImGui::Checkbox ("Life is Even Stranger", &even_stranger))
+        {
+          if (even_stranger)
+          {
+            SK_D3D11_Shaders.pixel.blacklist.emplace (ps_face);
+            SK_D3D11_Shaders.pixel.blacklist.emplace (ps_skin);
+          }
+
+          else
+          {
+            SK_D3D11_Shaders.pixel.blacklist.erase (ps_face);
+            SK_D3D11_Shaders.pixel.blacklist.erase (ps_skin);
+          }
+        }
+
+        bool enable = evil || even_stranger || wired;
+
+        extern bool SK_D3D11_EnableTracking;
+        SK_D3D11_EnableTracking = enable || show_shader_mod_dlg;
+
+        ImGui::TreePop ();
+      }
+    }
+#endif
 
 
     static bool has_own_limiter = (hModTZFix || hModTBFix);
@@ -2096,7 +2382,8 @@ SK_ImGui_ControlPanel (void)
                       ImGui::SetTooltip
                                      ( "(%llu ms asleep, %llu ms awake)",
                                          /*(stats.attempts - stats.rejections), stats.attempts,*/
-                                           InterlockedAdd64 (&stats.time.allowed, 0), InterlockedAdd64 (&stats.time.deprived, 0) );
+                                           InterlockedAdd64 (&stats.time.allowed,  0),
+                                           InterlockedAdd64 (&stats.time.deprived, 0) );
                     }
                      ImGui::SameLine (                                                                              );
 
@@ -2109,21 +2396,36 @@ SK_ImGui_ControlPanel (void)
                       ImGui::SetTooltip
                                      ( "(%llu ms asleep, %llu ms awake)",
                                          /*(stats.attempts - stats.rejections), stats.attempts,*/
-                                           InterlockedAdd64 (&stats.time.allowed, 0), InterlockedAdd64 (&stats.time.deprived, 0) );
+                                           InterlockedAdd64 (&stats.time.allowed,  0),
+                                           InterlockedAdd64 (&stats.time.deprived, 0) );
                   }
 
+          ImGui::Separator ();
+
           extern bool  SK_Framerate_Busy;
+          extern float SK_Framerate_SleepToBusy;
           extern float SK_Framerate_WaitScalar;
           extern bool  SK_Framerate_YieldOnce;
 
-          ImGui::Checkbox   ("Busy-Wait Limiter",            &SK_Framerate_Busy);
-
-          if (! SK_Framerate_Busy)
+          if (target_fps > 0.0f)
           {
-            ImGui::SameLine   ();
-            ImGui::InputFloat ("Wait Scale (% of TargetMS)", &SK_Framerate_WaitScalar);
+            ImGui::Checkbox      ("Busy-Wait Limiter",                                &SK_Framerate_Busy);
+            ImGui::SameLine      ();
 
-            ImGui::Checkbox   ("Yield Once",                 &SK_Framerate_YieldOnce);
+            extern bool                                                 SK_Framerate_ReduceInputLatency ;
+            ImGui::Checkbox      ("Reduce Input Latency",              &SK_Framerate_ReduceInputLatency);
+
+            if (! SK_Framerate_Busy)
+            {
+              ImGui::SameLine    (                                                                     );
+              ImGui::Checkbox    ( "Sleep Once, then Busy-Wait",               &SK_Framerate_YieldOnce );
+              ImGui::Separator   (                                                                     );
+              ImGui::SliderFloat ( "Sleep->Busy (Next Frame Deadline)"       , &SK_Framerate_SleepToBusy, 0.00f,
+                                   1000.0f / target_fps, "%4.1f ms or Sooner"                          );
+              ImGui::SliderFloat ( "Sleep Duration",                           &SK_Framerate_WaitScalar,  0.01f,
+                                   99.9f, SK_FormatString ( "%4.1f ms", (10.0f / target_fps )          *
+                                                            SK_Framerate_WaitScalar).c_str ()          );
+            }
           }
 
           ImGui::EndGroup ();
@@ -2133,9 +2435,160 @@ SK_ImGui_ControlPanel (void)
       ImGui::PopItemWidth ();
     }
 
-    SK_RenderAPI api = SK_GetCurrentRenderBackend ().api;
+    SK_RenderAPI api = rb.api;
 
-    if ( (int)api & (int)SK_RenderAPI::D3D11 &&
+    if ( static_cast <int> (api) & static_cast <int> (SK_RenderAPI::D3D9) &&
+         ImGui::CollapsingHeader ("Direct3D 9 Settings", ImGuiTreeNodeFlags_DefaultOpen) )
+    {
+      ImGui::TreePush ("");
+
+      if (ImGui::Button ("  D3D9 Render Mod Tools  "))
+        show_d3d9_shader_mod_dlg ^= 1;
+
+      ImGui::SameLine ();
+
+      ImGui::Checkbox ("Enable Texture Modding (Experimental)", &config.textures.d3d9_mod);
+
+      if (ImGui::IsItemHovered ())
+      {
+        ImGui::SetTooltip ("Requires a game restart.");
+      }
+
+      if (config.textures.d3d9_mod)
+      {
+      ImGui::TreePush ("");
+      if (ImGui::CollapsingHeader ("Texture Memory Stats", ImGuiTreeNodeFlags_DefaultOpen))
+      {
+        extern bool __remap_textures;
+
+        ImGui::PushStyleVar (ImGuiStyleVar_ChildWindowRounding, 15.0f);
+        ImGui::TreePush     ("");
+
+        ImGui::BeginChild  ("Texture Details", ImVec2 ( font_size           * 30,
+                                                        font_size_multiline * 4.8f ),
+                                                 true, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NavFlattened );
+
+        ImGui::Columns   ( 3 );
+          ImGui::PushStyleColor (ImGuiCol_Text, ImVec4 (1.0f, 1.0f, 1.0f, 1.0f));
+          ImGui::Text    ( "          Size" );                                                                 ImGui::NextColumn ();
+          ImGui::Text    ( "      Activity" );                                                                 ImGui::NextColumn ();
+          ImGui::Text    ( "       Savings" );
+          ImGui::PopStyleColor  ();
+        ImGui::Columns   ( 1 );
+
+        ImGui::PushStyleColor
+                         ( ImGuiCol_Text, ImVec4 (0.75f, 0.75f, 0.75f, 1.0f) );
+
+        ImGui::Separator (   );
+
+      //ImGui::PushFont  (ImGui::GetIO ().Fonts->Fonts [1]);
+        ImGui::Columns   ( 3 );
+          ImGui::Text    ( "%#6zu MiB Total",
+                                                         SK::D3D9::tex_mgr.cacheSizeTotal () >> 20ULL ); ImGui::NextColumn ();
+          ImGui::TextColored
+                         (ImVec4 (0.3f, 1.0f, 0.3f, 1.0f),
+                           "%#5lu     Hits",             SK::D3D9::tex_mgr.getHitCount    ()          ); ImGui::NextColumn ();
+          ImGui::Text       ( "Budget: %#7zu MiB  ",        static_cast <IDirect3DDevice9 *>(SK_GetCurrentRenderBackend ().device)->
+                                                                         GetAvailableTextureMem ()  / 1048576UL );
+        ImGui::Columns   ( 1 );
+
+        ImGui::Separator (   );
+
+        ImColor  active   ( 1.0f,  1.0f,  1.0f, 1.0f);
+        ImColor  inactive (0.75f, 0.75f, 0.75f, 1.0f);
+        ImColor& color   = __remap_textures ? inactive : active;
+
+        ImGui::PushStyleColor (ImGuiCol_Text, color);
+
+        bool selected = (! __remap_textures);
+
+        ImGui::Columns   ( 3 );
+          ImGui::Selectable  ( SK_FormatString ( "%#6zu MiB Base###D3D9_BaseTextures",
+                                                   SK::D3D9::tex_mgr.cacheSizeBasic () >> 20ULL ).c_str (),
+                                 &selected ); ImGui::NextColumn ();
+
+          ImGui::PopStyleColor ();
+
+          if (SK_ImGui_IsItemClicked ())
+            __remap_textures = false;
+          if ((! selected) && (ImGui::IsItemHovered () || ImGui::IsItemFocused ()))
+            ImGui::SetTooltip ("Click here to use the game's original textures.");
+
+          ImGui::TextColored
+                         (ImVec4 (1.0f, 0.3f, 0.3f, 1.0f),
+                           "%#5lu   Misses",             SK::D3D9::tex_mgr.getMissCount   ()          );  ImGui::NextColumn ();
+          ImGui::Text    ( "Time:    %#7.03lf  s  ",     SK::D3D9::tex_mgr.getTimeSaved   () / 1000.0f);
+        ImGui::Columns   ( 1 );
+
+        ImGui::Separator (   );
+
+        color    = __remap_textures ? active : inactive;
+        selected = __remap_textures;
+
+        ImGui::PushStyleColor (ImGuiCol_Text, color);
+
+        ImGui::Columns   ( 3 );
+          ImGui::Selectable  ( SK_FormatString ( "%#6zu MiB Injected###D3D9_InjectedTextures",
+                                                             SK::D3D9::tex_mgr.cacheSizeInjected () >> 20ULL ).c_str (),
+                                           &selected ); ImGui::NextColumn ();
+
+          ImGui::PopStyleColor ();
+
+          if (SK_ImGui_IsItemClicked ())
+            __remap_textures = true;
+          if ((! selected) && (ImGui::IsItemHovered () || ImGui::IsItemFocused ()))
+            ImGui::SetTooltip ("Click here to use custom textures.");
+
+          ImGui::TextColored (ImColor::HSV (std::min ( 0.4f * (float)SK::D3D9::tex_mgr.getHitCount  ()   / 
+                                                              (float)SK::D3D9::tex_mgr.getMissCount (), 0.4f ), 0.98f, 1.0f),
+                           "%.2f  Hit/Miss",          (double)SK::D3D9::tex_mgr.getHitCount  () / 
+                                                      (double)SK::D3D9::tex_mgr.getMissCount ()          ); ImGui::NextColumn ();
+          ImGui::Text    ( "Driver: %#7zu MiB  ",    SK::D3D9::tex_mgr.getByteSaved          () >> 20ULL );
+
+        ImGui::PopStyleColor
+                         (   );
+        ImGui::Columns   ( 1 );
+      //ImGui::PopFont   (   );
+        ImGui::EndChild  (   );
+
+#if 0
+        if (ImGui::CollapsingHeader ("Thread Stats"))
+        {
+          std::vector <SK::D3D9::TexThreadStats> stats =
+            SK::D3D9::tex_mgr.getThreadStats ();
+
+          int thread_id = 0;
+
+          for (auto&& it : stats)
+          {
+            ImGui::Text ("Thread #%lu  -  %6lu jobs retired, %5lu MiB loaded  -  %.6f User / %.6f Kernel / %3.1f Idle",
+                         thread_id++,
+                         it.jobs_retired, it.bytes_loaded >> 20UL,
+                         (double)ULARGE_INTEGER
+            {
+              it.runtime.user.dwLowDateTime, it.runtime.user.dwHighDateTime
+            }.QuadPart / 10000000.0,
+                         (double)ULARGE_INTEGER
+            {
+              it.runtime.kernel.dwLowDateTime, it.runtime.kernel.dwHighDateTime
+            }.QuadPart / 10000000.0,
+                (double)ULARGE_INTEGER
+              {
+                it.runtime.idle.dwLowDateTime, it.runtime.idle.dwHighDateTime
+              }.QuadPart / 10000000.0);
+          }
+        }
+#endif
+
+        ImGui::TreePop  ();
+      }
+      ImGui::TreePop ();
+      }
+
+      ImGui::TreePop ();
+    }
+
+    if ( static_cast <int> (api) & static_cast <int> (SK_RenderAPI::D3D11) &&
          ImGui::CollapsingHeader ("Direct3D 11 Settings", ImGuiTreeNodeFlags_DefaultOpen) )
     {
       ImGui::PushStyleColor (ImGuiCol_Header,        ImVec4 (0.90f, 0.68f, 0.02f, 0.45f));
@@ -2150,7 +2603,8 @@ SK_ImGui_ControlPanel (void)
 
       extern BOOL SK_DXGI_SupportsTearing (void);
 
-      bool swapchain = ImGui::CollapsingHeader ("SwapChain Management");
+      bool swapchain =
+        ImGui::CollapsingHeader ("SwapChain Management");
 
       if (ImGui::IsItemHovered ())
       {
@@ -2158,21 +2612,22 @@ SK_ImGui_ControlPanel (void)
         ImGui::TextColored    ( ImColor (235, 235, 235),
                                 "Highly Advanced Render Tweaks" );
         ImGui::Separator      ();
-        ImGui::BulletText     ("Altering these Settings may Require Manual INI Edits to Fix.");
-        ImGui::BulletText     ("Nearly all SwapChain settings require a Game Restart.");
-        ImGui::BulletText     ("NieR: Automata is Broken and Not Compatible With (m)Any of These.");
+        ImGui::BulletText     ("Altering these settings may require manual INI edits to recover from");
         ImGui::PushStyleColor (ImGuiCol_Text, ImVec4 (1.0f, 0.85f, 0.1f, 0.9f));
-        ImGui::BulletText     ("For Best Results, Consult your Nearest greedyliz ;)");
+        ImGui::BulletText     ("For best results, consult your nearest greedyliz ;)");
         ImGui::PopStyleColor  ();
         ImGui::EndTooltip     ();
       }
 
       if (swapchain)
       {
+        static bool flip         = config.render.framerate.flip_discard;
+        static bool waitable     = config.render.framerate.swapchain_wait > 0;
+        static int  buffer_count = config.render.framerate.buffer_count;
+
         ImGui::TreePush ("");
 
         ImGui::Checkbox ("Use Flip Model Presentation", &config.render.framerate.flip_discard);
-
         ImGui::InputInt ("Presentation Interval",       &config.render.framerate.present_interval);
 
         if (ImGui::IsItemHovered ())
@@ -2190,31 +2645,35 @@ SK_ImGui_ControlPanel (void)
           {
             ImGui::Text       ("In Flip Model, this Controls Frame Queuing Rather than V-Sync)");
             ImGui::Separator  (                                                                );
-            ImGui::BulletText ("Values > 1 will disable G - Sync but will produce the most "
-                               "consistent framerates possible."                               );
+            ImGui::BulletText ("Values > 1 will disable G-Sync but will produce the most "
+                               "consistent frame rates possible."                              );
           }
 
           ImGui::EndTooltip ();
         }
 
-        config.render.framerate.present_interval = std::max (-1, std::min (4, config.render.framerate.present_interval));
+        config.render.framerate.present_interval =
+          std::max (-1, std::min (4, config.render.framerate.present_interval));
+
+        ImGui::InputInt ("BackBuffer Count",       &config.render.framerate.buffer_count);
+        ImGui::InputInt ("Maximum Device Latency", &config.render.framerate.pre_render_limit);
 
         if (config.render.framerate.flip_discard)
         {
-          bool waitable = config.render.framerate.swapchain_wait > 0;
+          bool waitable_ = config.render.framerate.swapchain_wait > 0;
 
-          if (ImGui::Checkbox ("Waitable SwapChain", &waitable))
+          if (ImGui::Checkbox ("Waitable SwapChain", &waitable_))
           {
-            if (! waitable) config.render.framerate.swapchain_wait = 0;
-            else            config.render.framerate.swapchain_wait = 15;
+            if (! waitable_) config.render.framerate.swapchain_wait = 0;
+            else             config.render.framerate.swapchain_wait = 15;
           }
+
+          if (ImGui::IsItemHovered ())
+            ImGui::SetTooltip ("Reduces input latency, BUT makes it impossible to change resolution.");
 
           if (waitable) {
             ImGui::SliderInt ("Maximum Wait Period", &config.render.framerate.swapchain_wait, 1, 66);
           }
-
-          ImGui::InputInt ("BackBuffer Count",       &config.render.framerate.buffer_count);
-          ImGui::InputInt ("Maximum Device Latency", &config.render.framerate.pre_render_limit);
 
           if (SK_DXGI_SupportsTearing ())
           {
@@ -2227,10 +2686,21 @@ SK_ImGui_ControlPanel (void)
             if (ImGui::IsItemHovered ())
             {
               ImGui::BeginTooltip ();
-              ImGui::Text         ("This Feature is HIGHLY Experimental");
+              ImGui::Text         ("Enables tearing in windowed mode (Windows 10+); not particularly useful.");
               ImGui::EndTooltip   ();
             }
           }
+        }
+
+        bool changed = (flip         != config.render.framerate.flip_discard      ) ||
+                       (waitable     != config.render.framerate.swapchain_wait > 0) ||
+                       (buffer_count != config.render.framerate.buffer_count      );
+
+        if (changed)
+        {
+          ImGui::PushStyleColor (ImGuiCol_Text, ImColor::HSV (.3f, .8f, .9f));
+          ImGui::BulletText     ("Game Restart Required");
+          ImGui::PopStyleColor  ();
         }
 
         ImGui::TreePop  (  );
@@ -2297,8 +2767,8 @@ SK_ImGui_ControlPanel (void)
       if (res_limits)
       {
         ImGui::TreePush  ("");
-        ImGui::InputInt2 ("Minimum Resolution", (int *)&config.render.dxgi.res.min.x);
-        ImGui::InputInt2 ("Maximum Resolution", (int *)&config.render.dxgi.res.max.x);
+        ImGui::InputInt2 ("Minimum Resolution", reinterpret_cast <int *> (&config.render.dxgi.res.min.x));
+        ImGui::InputInt2 ("Maximum Resolution", reinterpret_cast <int *> (&config.render.dxgi.res.max.x));
         ImGui::TreePop   ();
        }
 
@@ -2321,7 +2791,8 @@ SK_ImGui_ControlPanel (void)
       ImGui::SameLine ();
 #endif
 
-      bool advanced = ImGui::TreeNode ("Advanced (Debug)###Advanced_NVD3D11");
+      bool advanced =
+        ImGui::TreeNode ("Advanced (Debug)###Advanced_NVD3D11");
 
       if (advanced)
       {
@@ -2354,7 +2825,7 @@ SK_ImGui_ControlPanel (void)
       if (ImGui::CollapsingHeader ("Third-Party Software"))
       {
         ImGui::TreePush ("");
-        ImGui::Checkbox ("Disable GeForce Experience and NVIDIA Shield", &config.compatibility.disable_nv_bloat);
+        ImGui::Checkbox     ("Disable GeForce Experience and NVIDIA Shield", &config.compatibility.disable_nv_bloat);
         if (ImGui::IsItemHovered ())
           ImGui::SetTooltip ("May improve software compatibility, but disables ShadowPlay, couch co-op and various Shield-related functionality.");
         ImGui::TreePop  ();
@@ -2363,7 +2834,9 @@ SK_ImGui_ControlPanel (void)
       if (ImGui::CollapsingHeader ("Render Backends", SK_IsInjected () ? ImGuiTreeNodeFlags_DefaultOpen : 0))
       {
         ImGui::TreePush ("");
-        auto EnableActiveAPI = [](SK_RenderAPI api)
+
+        auto EnableActiveAPI =
+        [ ](SK_RenderAPI api)
         {
           switch (api)
           {
@@ -2407,8 +2880,10 @@ SK_ImGui_ControlPanel (void)
 
         using Tooltip_pfn = void (*)(void);
 
-        auto ImGui_CheckboxEx = []( const char* szName,         bool*       pVar,
-                                          bool  enabled = true, Tooltip_pfn tooltip_disabled = nullptr )
+        auto ImGui_CheckboxEx =
+        [ ]( const char* szName, bool* pVar,
+                                 bool  enabled = true,
+             Tooltip_pfn tooltip_disabled      = nullptr )
         {
           if (enabled)
           {
@@ -2443,12 +2918,12 @@ SK_ImGui_ControlPanel (void)
         ImGui_CheckboxEx ("Direct3D 9",   &config.apis.d3d9.hook);
         ImGui_CheckboxEx ("Direct3D 9Ex", &config.apis.d3d9ex.hook, config.apis.d3d9.hook);
 
-        ImGui::NextColumn (  );
+        ImGui::NextColumn (   );
 
-        ImGui_CheckboxEx ("Direct3D 11", &config.apis.dxgi.d3d11.hook);
+        ImGui_CheckboxEx ("Direct3D 11",  &config.apis.dxgi.d3d11.hook);
 
 #ifdef _WIN64
-        ImGui_CheckboxEx ("Direct3D 12", &config.apis.dxgi.d3d12.hook, config.apis.dxgi.d3d11.hook);
+        ImGui_CheckboxEx ("Direct3D 12",  &config.apis.dxgi.d3d12.hook, config.apis.dxgi.d3d11.hook);
 #endif
 
         ImGui::Columns    ( 1 );
@@ -2549,16 +3024,17 @@ SK_ImGui_ControlPanel (void)
 
       if (ImGui::CollapsingHeader ("Debugging"))
       {
-        ImGui::TreePush  ("");
-        ImGui::BeginGroup ( );
-        ImGui::Checkbox  ("Enable Crash Handler",           &config.system.handle_crashes);
+        ImGui::TreePush   ("");
+        ImGui::BeginGroup (  );
+        ImGui::Checkbox   ("Enable Crash Handler",          &config.system.handle_crashes);
 
         if (ImGui::IsItemHovered ())
           ImGui::SetTooltip ("Play Metal Gear Solid Alert Sound and Log Crashes in logs/crash.log");
 
         ImGui::Checkbox  ("ReHook LoadLibrary",             &config.compatibility.rehook_loadlibrary);
 
-        if (ImGui::IsItemHovered ()) {
+        if (ImGui::IsItemHovered ())
+{
           ImGui::BeginTooltip ();
           ImGui::Text         ("Keep LoadLibrary Hook at Front of Hook Chain");
           ImGui::Separator    ();
@@ -2655,26 +3131,29 @@ SK_ImGui_ControlPanel (void)
         GetClientRect (game_window.hWnd, &client);
         GetWindowRect (game_window.hWnd, &window);
 
-        DescribeRect (&window,   "Window", "GetWindowRect"   );
-        DescribeRect (&client,   "Client", "GetClientRect"   );
+        DescribeRect  (&window,   "Window", "GetWindowRect"   );
+        DescribeRect  (&client,   "Client", "GetClientRect"   );
                            
         ImGui::Columns     (1);
         ImGui::Separator   ( );
         ImGui::EndGroup    ( );
 
-        ImGui::Text ( "ImGui Cursor State: %lu (%lu,%lu) { %lu, %lu }",
-                        SK_ImGui_Cursor.visible, SK_ImGui_Cursor.pos.x,
-                                                 SK_ImGui_Cursor.pos.y,
-                          SK_ImGui_Cursor.orig_pos.x, SK_ImGui_Cursor.orig_pos.y );
-        ImGui::SameLine ();
-        ImGui::Text (" {%s :: Last Update: %lu}", SK_ImGui_Cursor.idle ? "Idle" : "Not Idle", SK_ImGui_Cursor.last_move);
-        ImGui::TreePop     ( );
+        ImGui::Text        ( "ImGui Cursor State: %lu (%lu,%lu) { %lu, %lu }",
+                               SK_ImGui_Cursor.visible, SK_ImGui_Cursor.pos.x,
+                                                        SK_ImGui_Cursor.pos.y,
+                                 SK_ImGui_Cursor.orig_pos.x, SK_ImGui_Cursor.orig_pos.y );
+        ImGui::SameLine    ( );
+        ImGui::Text        (" {%s :: Last Update: %lu}",
+                              SK_ImGui_Cursor.idle ? "Idle" :
+                                                     "Not Idle",
+                                SK_ImGui_Cursor.last_move);
+        ImGui::TreePop      ( );
       }
 
-      ImGui::PopStyleColor (3);
+      ImGui::PopStyleColor  (3);
 
-      ImGui::TreePop       ( );
-      ImGui::PopStyleColor (3);
+      ImGui::TreePop        ( );
+      ImGui::PopStyleColor  (3);
     }
 
     bool input_mgmt_open = ImGui::CollapsingHeader ("Input Management");
@@ -2684,31 +3163,38 @@ SK_ImGui_ControlPanel (void)
       static DWORD last_xinput   = 0;
       static DWORD last_hid      = 0;
       static DWORD last_di8      = 0;
+      static DWORD last_steam    = 0;
       static DWORD last_rawinput = 0;
 
       struct { ULONG reads; } xinput { };
+      struct { ULONG reads; } steam  { };
 
       struct { ULONG kbd_reads, mouse_reads, gamepad_reads; } di8       { };
       struct { ULONG kbd_reads, mouse_reads, gamepad_reads; } hid       { };
       struct { ULONG kbd_reads, mouse_reads, gamepad_reads; } raw_input { };
 
-      xinput.reads      = SK_XInput_Backend.reads [2];
+      xinput.reads            = SK_XInput_Backend.reads   [2];
 
-      di8.kbd_reads     = SK_DI8_Backend.reads [1];
-      di8.mouse_reads   = SK_DI8_Backend.reads [0];
-      di8.gamepad_reads = SK_DI8_Backend.reads [2];
+      di8.kbd_reads           = SK_DI8_Backend.reads      [1];
+      di8.mouse_reads         = SK_DI8_Backend.reads      [0];
+      di8.gamepad_reads       = SK_DI8_Backend.reads      [2];
 
-      hid.kbd_reads     = SK_HID_Backend.reads [1];
-      hid.mouse_reads   = SK_HID_Backend.reads [0];
-      hid.gamepad_reads = SK_HID_Backend.reads [2];
+      hid.kbd_reads           = SK_HID_Backend.reads      [1];
+      hid.mouse_reads         = SK_HID_Backend.reads      [0];
+      hid.gamepad_reads       = SK_HID_Backend.reads      [2];
 
       raw_input.kbd_reads     = SK_RawInput_Backend.reads [1];
       raw_input.mouse_reads   = SK_RawInput_Backend.reads [0];
       raw_input.gamepad_reads = SK_RawInput_Backend.reads [2];
 
+      steam.reads             = SK_Steam_Backend.reads    [2];
+
 
       if (SK_XInput_Backend.nextFrame ())
         last_xinput = timeGetTime ();
+
+      if (SK_Steam_Backend.nextFrame ())
+        last_steam = timeGetTime ();
 
       if (SK_HID_Backend.nextFrame ())
         last_hid = timeGetTime ();
@@ -2719,6 +3205,21 @@ SK_ImGui_ControlPanel (void)
       if (SK_RawInput_Backend.nextFrame ())
         last_rawinput = timeGetTime ();
 
+
+      if (last_steam > timeGetTime ( ) - 500UL)
+      {
+        ImGui::PushStyleColor (ImGuiCol_Text, ImColor::HSV (0.4f - ( 0.4f * ( timeGetTime ( ) - last_steam ) / 500.0f ), 1.0f, 0.8f));
+        ImGui::SameLine ( );
+        ImGui::Text ("       Steam");
+        ImGui::PopStyleColor ( );
+
+        if (ImGui::IsItemHovered ( ))
+        {
+          ImGui::BeginTooltip ( );
+          ImGui::Text ("Gamepad     %lu", steam.reads);
+          ImGui::EndTooltip ( );
+        }
+      }
 
       if (last_xinput > timeGetTime () - 500UL)
       {
@@ -3016,13 +3517,132 @@ extern float SK_ImGui_PulseNav_Strength;
         ImGui::SliderFloat ("TitlePulseDuration", &SK_ImGui_PulseTitle_Duration, 0.0f, 1000.0f);
 #endif
 
-        ImGui::TreePop ();
+        auto GamepadDebug = [](UINT idx) ->
+        void
+        {
+          JOYINFOEX joy_ex   { };
+          JOYCAPSA  joy_caps { };
+
+          joy_ex.dwSize  = sizeof JOYINFOEX;
+          joy_ex.dwFlags = JOY_RETURNALL      | JOY_RETURNPOVCTS |
+                           JOY_RETURNCENTERED | JOY_USEDEADZONE;
+
+          if (joyGetPosEx    (idx, &joy_ex)                    != JOYERR_NOERROR)
+            return;
+
+          if (joyGetDevCapsA (idx, &joy_caps, sizeof JOYCAPSA) != JOYERR_NOERROR || joy_caps.wCaps == 0)
+            return;
+
+          std::stringstream buttons;
+
+          for ( unsigned int i = 0, j = 0; i < joy_caps.wMaxButtons; i++ )
+          {
+            if (joy_ex.dwButtons & (1 << i))
+            {
+              if (j != 0)
+                buttons << ", ";
+
+              buttons << "Button " << std::to_string (i);
+
+              ++j;
+            }
+          }
+
+          ImGui::PushStyleColor (ImGuiCol_Header,        ImVec4 (0.90f, 0.40f, 0.40f, 0.45f));
+          ImGui::PushStyleColor (ImGuiCol_HeaderHovered, ImVec4 (0.90f, 0.45f, 0.45f, 0.80f));
+          ImGui::PushStyleColor (ImGuiCol_HeaderActive,  ImVec4 (0.87f, 0.53f, 0.53f, 0.80f));
+
+          bool expanded = ImGui::CollapsingHeader (SK_FormatString ("%s###JOYSTICK_DEBUG_%lu", joy_caps.szPname, idx).c_str ());
+
+          ImGui::Combo    ("Gamepad Type", &config.input.gamepad.predefined_layout, "PlayStation 4\0Steam\0\0", 2);
+
+          if (ImGui::IsItemHovered ())
+          {
+            ImGui::SetTooltip ("This setting is only used if XInput or DirectInput are not working.");
+          }
+
+          ImGui::SameLine ();
+
+          ImGui::Checkbox    ("Favor DirectInput over XInput", &config.input.gamepad.native_ps4);
+
+          if (expanded)
+          {
+            ImGui::TreePush        (       ""       );
+
+            ImGui::TextUnformatted (buttons.str ().c_str ());
+
+            float angle =
+              static_cast <float> (joy_ex.dwPOV) / 100.0f;
+
+            if (joy_ex.dwPOV != JOY_POVCENTERED)
+              ImGui::Text (u8" D-Pad:  %4.1f°", angle);
+            else
+              ImGui::Text (  " D-Pad:  Centered");
+
+            struct axis_s {
+              const char* label;
+              float       min, max;
+              float       now;
+            }
+              axes [6] = { { "X-Axis", static_cast <float> (joy_caps.wXmin),
+                                       static_cast <float> (joy_caps.wXmax),
+                                       static_cast <float> (joy_ex.dwXpos) },
+
+                            { "Y-Axis", static_cast <float> (joy_caps.wYmin), 
+                                        static_cast <float> (joy_caps.wYmax),
+                                        static_cast <float> (joy_ex.dwYpos) },
+
+                            { "Z-Axis", static_cast <float> (joy_caps.wZmin),
+                                        static_cast <float> (joy_caps.wZmax),
+                                        static_cast <float> (joy_ex.dwZpos) },
+
+                            { "R-Axis", static_cast <float> (joy_caps.wRmin),
+                                        static_cast <float> (joy_caps.wRmax),
+                                        static_cast <float> (joy_ex.dwRpos) },
+
+                            { "U-Axis", static_cast <float> (joy_caps.wUmin),
+                                        static_cast <float> (joy_caps.wUmax),
+                                        static_cast <float> (joy_ex.dwUpos) },
+
+                            { "V-Axis", static_cast <float> (joy_caps.wVmin),
+                                        static_cast <float> (joy_caps.wVmax),
+                                        static_cast <float> (joy_ex.dwVpos) } };
+
+            for (UINT axis = 0; axis < joy_caps.wMaxAxes; axis++)
+            {
+              float range  = static_cast <float>  (axes [axis].max - axes [axis].min);
+              float center = static_cast <float> ((axes [axis].max + axes [axis].min)) / 2.0f;
+              float rpos   = 0.5f;
+
+              if (static_cast <float> (axes [axis].now) < center)
+                rpos = center - (center - axes [axis].now);
+              else
+                rpos = static_cast <float> (axes [axis].now - axes [axis].min);
+
+              ImGui::ProgressBar ( rpos / range,
+                                     ImVec2 (-1, 0),
+                                       SK_FormatString ( "%s [ %.0f, { %.0f, %.0f } ]",
+                                                           axes [axis].label, axes [axis].now,
+                                                           axes [axis].min,   axes [axis].max ).c_str () );
+            }
+
+            ImGui::TreePop     ( );
+          }
+          ImGui::PopStyleColor (3);
+        };
+
+        ImGui::Separator ();
+
+        GamepadDebug (JOYSTICKID1);
+        GamepadDebug (JOYSTICKID2);
+
+        ImGui::TreePop       ( );
       }
 
       if (ImGui::CollapsingHeader ("Low-Level Mouse Settings", ImGuiTreeNodeFlags_DefaultOpen))
       {
-        static bool deadzone_hovered = false;
-        float  float_thresh          = std::max (1.0f, std::min (100.0f, config.input.mouse.antiwarp_deadzone));
+        static bool  deadzone_hovered = false;
+               float float_thresh     = std::max (1.0f, std::min (100.0f, config.input.mouse.antiwarp_deadzone));
 
         ImVec2 deadzone_pos    = ImGui::GetIO ().DisplaySize;
                deadzone_pos.x /= 2.0f;
@@ -3660,8 +4280,8 @@ extern float SK_ImGui_PulseNav_Strength;
 
           int temp_unit = config.system.prefer_fahrenheit ? 1 : 0;
 
-          ImGui::RadioButton (" Celsius ",    (int*)&temp_unit, 0); ImGui::SameLine ();
-          ImGui::RadioButton (" Fahrenheit ", (int*)&temp_unit, 1);  ImGui::SameLine ();
+          ImGui::RadioButton (" Celsius ",    &temp_unit, 0); ImGui::SameLine ();
+          ImGui::RadioButton (" Fahrenheit ", &temp_unit, 1); ImGui::SameLine ();
           ImGui::Checkbox    (" Print Slowdown", &config.gpu.print_slowdown);
 
           config.system.prefer_fahrenheit = temp_unit == 1 ? true : false;
@@ -3701,17 +4321,17 @@ extern float SK_ImGui_PulseNav_Strength;
         {
           ImGui::TreePush ("");
           ImGui::Checkbox (" Simplified View",         &config.cpu.simple);
-          ImGui::TreePop  ();
+          ImGui::TreePop  (  );
         }
 
         spawn |= ImGui::Checkbox ("Memory Stats",      &config.mem.show);
 
-        ImGui::NextColumn ();
+        ImGui::NextColumn (  );
 
         spawn |= ImGui::Checkbox ("General I/O Stats", &config.io.show);
         spawn |= ImGui::Checkbox ("Pagefile Stats",    &config.pagefile.show);
 
-        ImGui::NextColumn ();
+        ImGui::NextColumn (  );
 
         spawn |= ImGui::Checkbox ("Disk Stats",        &config.disk.show);
 
@@ -3754,13 +4374,13 @@ extern float SK_ImGui_PulseNav_Strength;
       {
         ImGui::TreePush ("");
 
-        float color [3] = { (float)config.osd.red   / 255.0f,
-                            (float)config.osd.green / 255.0f,
-                            (float)config.osd.blue  / 255.0f };
+        float color [3] = { static_cast <float> (config.osd.red)   / 255.0f,
+                            static_cast <float> (config.osd.green) / 255.0f,
+                            static_cast <float> (config.osd.blue)  / 255.0f };
 
         float default_r, default_g, default_b;
 
-        extern void __stdcall SK_OSD_GetDefaultColor (float& r, float& g, float& b);
+        extern void __stdcall SK_OSD_GetDefaultColor ( float& r,  float& g,  float& b);
                               SK_OSD_GetDefaultColor (default_r, default_g, default_b);
 
         if (config.osd.red   == MAXDWORD) color [0] = default_r;
@@ -3773,9 +4393,9 @@ extern float SK_ImGui_PulseNav_Strength;
           color [1] = std::max (std::min (color [1], 1.0f), 0.0f);
           color [2] = std::max (std::min (color [2], 1.0f), 0.0f);
 
-          config.osd.red   = (int)(color [0] * 255);
-          config.osd.green = (int)(color [1] * 255);
-          config.osd.blue  = (int)(color [2] * 255);
+          config.osd.red   = static_cast <int>(color [0] * 255);
+          config.osd.green = static_cast <int>(color [1] * 255);
+          config.osd.blue  = static_cast <int>(color [2] * 255);
 
           if ( color [0] >= default_r - 0.001f &&
                color [0] <= default_r + 0.001f    ) config.osd.red   = MAXDWORD;
@@ -3804,9 +4424,9 @@ extern float SK_ImGui_PulseNav_Strength;
         bool bottom_align = config.osd.pos_y < 0;
 
         bool
-        moved  = ImGui::SliderInt ("X Origin##OSD",       &x_pos, 1, (int)io.DisplaySize.x); ImGui::SameLine ();
+        moved  = ImGui::SliderInt ("X Origin##OSD",       &x_pos, 1, static_cast <int> (io.DisplaySize.x)); ImGui::SameLine ();
         moved |= ImGui::Checkbox  ("Right-aligned##OSD",  &right_align);
-        moved |= ImGui::SliderInt ("Y Origin##OSD",       &y_pos, 1, (int)io.DisplaySize.y); ImGui::SameLine ();
+        moved |= ImGui::SliderInt ("Y Origin##OSD",       &y_pos, 1, static_cast <int> (io.DisplaySize.y)); ImGui::SameLine ();
         moved |= ImGui::Checkbox  ("Bottom-aligned##OSD", &bottom_align);
 
         if (moved)
@@ -3818,7 +4438,7 @@ extern float SK_ImGui_PulseNav_Strength;
           config.osd.pos_x = x_pos * (right_align  ? -1 : 1);
           config.osd.pos_y = y_pos * (bottom_align ? -1 : 1);
 
-          if (right_align && config.osd.pos_x >= 0)
+          if (right_align  && config.osd.pos_x >= 0)
             config.osd.pos_x = -1;
 
           if (bottom_align && config.osd.pos_y >= 0)
@@ -3862,13 +4482,13 @@ extern float SK_ImGui_PulseNav_Strength;
       }
       ImGui::SameLine ();
 
-      if (ImGui::Checkbox ("CPU",          &cpumon))
+      if (ImGui::Checkbox ("CPU",         &cpumon))
       {
         SK_ImGui_Widgets.cpu_monitor->setVisible (cpumon);
       }
       ImGui::SameLine ();
 
-      if (ImGui::Checkbox ("GPU", &gpumon))
+      if (ImGui::Checkbox ("GPU",         &gpumon))
       {
         SK_ImGui_Widgets.gpu_monitor->setVisible (gpumon);//.setActive (gpumon);
       }
@@ -3903,99 +4523,163 @@ extern float SK_ImGui_PulseNav_Strength;
       ImGui::TreePush ("");
 
       extern iSK_INI*       dll_ini;
-      
 
+      wchar_t imp_path_reshade [MAX_PATH + 2] = { };
+      wchar_t imp_name_reshade [64]           = { };
 
-      wchar_t imp_path [MAX_PATH + 2] = { };
-      wchar_t imp_name [64]           = { };
+      wchar_t imp_path_reshade_ex [MAX_PATH + 2] = { };
+      wchar_t imp_name_reshade_ex [64]           = { };
 
 #ifdef _WIN64
-      wcscat   (imp_name, L"Import.ReShade64");
+      wcscat   (imp_name_reshade, L"Import.ReShade64");
+      wsprintf (imp_path_reshade, L"%s\\PlugIns\\ThirdParty\\ReShade\\ReShade64.dll", std::wstring (SK_GetDocumentsDir () + L"\\My Mods\\SpecialK").c_str ());
 
-      //if (SK_IsInjected ())
-        wsprintf (imp_path, L"%s\\PlugIns\\ThirdParty\\ReShade\\ReShade64.dll", std::wstring (SK_GetDocumentsDir () + L"\\My Mods\\SpecialK").c_str ());
-      //else
-        //wsprintf (imp_path, L"%s\\ReShade64.dll", SK_GetHostPath ());
+      wcscat   (imp_name_reshade_ex, L"Import.ReShade64_Custom");
+      wsprintf (imp_path_reshade_ex, L"%s\\PlugIns\\Unofficial\\ReShade\\ReShade64.dll", std::wstring (SK_GetDocumentsDir () + L"\\My Mods\\SpecialK").c_str ());
 #else
-      wcscat   (imp_name, L"Import.ReShade32");
+      wcscat   (imp_name_reshade, L"Import.ReShade32");
+      wsprintf (imp_path_reshade, L"%s\\PlugIns\\ThirdParty\\ReShade\\ReShade32.dll", std::wstring (SK_GetDocumentsDir () + L"\\My Mods\\SpecialK").c_str ());
 
-      //if (SK_IsInjected ())
-        wsprintf (imp_path, L"%s\\PlugIns\\ThirdParty\\ReShade\\ReShade32.dll", std::wstring (SK_GetDocumentsDir () + L"\\My Mods\\SpecialK").c_str ());
-      //else
-        //wsprintf (imp_path, L"%s\\ReShade32.dll", SK_GetHostPath ());
+      wcscat   (imp_name_reshade_ex, L"Import.ReShade32_Custom");
+      wsprintf (imp_path_reshade_ex, L"%s\\PlugIns\\Unofficial\\ReShade\\ReShade32.dll", std::wstring (SK_GetDocumentsDir () + L"\\My Mods\\SpecialK").c_str ());
 #endif
-      bool reshade = dll_ini->contains_section (imp_name);
+      bool reshade_official   = dll_ini->contains_section (imp_name_reshade);
+      bool reshade_unofficial = dll_ini->contains_section (imp_name_reshade_ex);
 
-      ImGui::Text     ("Third-Party");
-      ImGui::TreePush ("");
+      static int order    = 0;
+      static int order_ex = 1;
 
-      bool changed = false;
-      changed |= ImGui::Checkbox ("ReShade", &reshade);
-
-      static int order = 0;
-
-      if (dll_ini->contains_section (imp_name) && dll_ini->get_section (imp_name).get_value (L"When") == L"Early")
-        order = 0;
-      else if (dll_ini->contains_section (imp_name) || (! SK_IsInjected ()))
-        order = 1;
-
-      ImGui::SameLine ();
-      changed |= ImGui::Combo ("Load Order", &order, "Early\0Plug-In\0\0");
-
-      if (ImGui::IsItemHovered ())
+      auto PlugInSelector = [&](iSK_INI* ini, std::string name, auto path, auto import_name, bool& enable, int& order, auto default_order = 1) ->
+      bool
       {
-        ImGui::BeginTooltip ();
-        ImGui::Text         ("Plug-In Load Order is Suggested by Default.");
-        ImGui::Separator    ();
-        ImGui::BulletText   ("If a plug-in does not show up or the game crashes, try loading it early.");
-        ImGui::BulletText   ("Early plug-ins handle rendering before Special K; ReShade will apply its effects to Special K's UI if loaded early.");
-        ImGui::EndTooltip   ();
-      }
+        std::string hash_name  = name + "##PlugIn";
+        std::string hash_load  = "Load Order##";
+                    hash_load += name;
 
-      ImGui::PushStyleColor (ImGuiCol_Text, ImColor::HSV (0.15f, 0.95f, 0.98f));
-      ImGui::TextWrapped    ("If you run into problems with the plug-in, pressing and holding Ctrl + Shift at game startup can disable it.");
-      ImGui::PopStyleColor  ();
+        bool changed =
+          ImGui::Checkbox (hash_name.c_str (), &enable);
 
-      if (changed)
-      {
-        if (! reshade) {
-          dll_ini->remove_section (imp_name);
-          dll_ini->write          (dll_ini->get_filename ());
+        if (ImGui::IsItemHovered ())
+        {
+          if (GetFileAttributesW (path) == INVALID_FILE_ATTRIBUTES)
+            ImGui::SetTooltip ("Please install %s to %ws", name.c_str (), path);
         }
 
-        else if (GetFileAttributesW (imp_path) != INVALID_FILE_ATTRIBUTES)
+        if (ini->contains_section (import_name))
+        {
+          if (ini->get_section (import_name).get_value (L"When") == L"Early")
+            order = 0;
+          else
+            order = 1;
+        }
+        else
+          order = default_order;
+
+        ImGui::SameLine ();
+
+        changed |=
+          ImGui::Combo (hash_load.c_str (), &order, "Early\0Plug-In\0\0");
+
+        if (ImGui::IsItemHovered ())
+        {
+          ImGui::BeginTooltip ();
+          ImGui::Text         ("Plug-In Load Order is Suggested by Default.");
+          ImGui::Separator    ();
+          ImGui::BulletText   ("If a plug-in does not show up or the game crashes, try loading it early.");
+          ImGui::BulletText   ("Early plug-ins handle rendering before Special K; ReShade will apply its effects to Special K's UI if loaded early.");
+          ImGui::EndTooltip   ();
+        }
+
+        return changed;
+      };
+
+      auto SavePlugInPreference = [](iSK_INI* ini, bool enable, auto import_name, auto role, auto order, auto path)
+      {
+        if (! enable)
+        {
+          ini->remove_section (import_name);
+          ini->write          (ini->get_filename ());
+        }
+
+        else if (GetFileAttributesW (path) != INVALID_FILE_ATTRIBUTES)
         {
           wchar_t wszImportRecord [4096];
 
-          _swprintf (wszImportRecord, L"[%s]\n", imp_name);
+          _swprintf ( wszImportRecord, L"[%s]\n"
 #ifdef _WIN64
-          wcscat (wszImportRecord, L"Architecture=x64\n");
+                                       L"Architecture=x64\n"
 #else
-          wcscat (wszImportRecord, L"Architecture=Win32\n");
+                                       L"Architecture=Win32\n"
 #endif
-          wcscat (wszImportRecord, L"Role=ThirdParty\n");
+                                       L"Role=%s\n"
+                                       L"When=%s\n"
+                                       L"Filename=%s\n\n",
+                                         import_name,
+                                           role,
+                                             order == 0 ? L"Early" :
+                                                          L"PlugIn",
+                                               path );
 
-          if (order == 0)
-            wcscat (wszImportRecord, L"When=Early\n");
-          else
-            wcscat (wszImportRecord, L"When=PlugIn\n");
-
-          wcscat (wszImportRecord, L"Filename=");
-          wcscat (wszImportRecord, imp_path);
-          wcscat (wszImportRecord, L"\n\n");
-
-          dll_ini->import         (wszImportRecord);
-          dll_ini->write          (dll_ini->get_filename ());
+          ini->import (wszImportRecord);
+          ini->write  (ini->get_filename ());
         }
-      }
+      };
 
-      if (ImGui::IsItemHovered ())
+      bool changed = false;
+
+      ImGui::PushStyleColor (ImGuiCol_Header,        ImVec4 (0.90f, 0.68f, 0.02f, 0.45f));
+      ImGui::PushStyleColor (ImGuiCol_HeaderHovered, ImVec4 (0.90f, 0.72f, 0.07f, 0.80f));
+      ImGui::PushStyleColor (ImGuiCol_HeaderActive,  ImVec4 (0.87f, 0.78f, 0.14f, 0.80f));
+
+      if (ImGui::CollapsingHeader ("Third-Party"))
       {
-        if (GetFileAttributesW (imp_path) == INVALID_FILE_ATTRIBUTES)
-          ImGui::SetTooltip ("Please install ReShade to %ws", imp_path);
+        ImGui::TreePush    ("");
+        changed |= 
+            PlugInSelector (dll_ini, "ReShade (Official)", imp_path_reshade, imp_name_reshade, reshade_official, order, 1);
+        ImGui::TreePop     (  );
+      }
+      ImGui::PopStyleColor ( 3);
+
+      if (SK_IsInjected ())
+      {
+        ImGui::PushStyleColor (ImGuiCol_Header,        ImVec4 (0.02f, 0.68f, 0.90f, 0.45f));
+        ImGui::PushStyleColor (ImGuiCol_HeaderHovered, ImVec4 (0.07f, 0.72f, 0.90f, 0.80f));
+        ImGui::PushStyleColor (ImGuiCol_HeaderActive,  ImVec4 (0.14f, 0.78f, 0.87f, 0.80f));
+
+        bool unofficial = ImGui::CollapsingHeader ("Unofficial");
+
+        ImGui::PushStyleColor (ImGuiCol_Text, ImColor::HSV (.247f, .95f, .98f));
+        ImGui::SameLine       ();
+        ImGui::Text           ("           Customized for Special K");
+        ImGui::PopStyleColor  ();
+
+        if (unofficial)
+        {
+          ImGui::TreePush    ("");
+          changed |=
+              PlugInSelector (dll_ini, "ReShade (Custom)", imp_path_reshade_ex, imp_name_reshade_ex, reshade_unofficial, order_ex, 1);
+          ImGui::TreePop     (  );
+        }
+        ImGui::PopStyleColor ( 3);
       }
 
-      ImGui::TreePop ();
+      ImGui::PushStyleColor (ImGuiCol_Text, ImColor::HSV (0.15f, 0.95f, 0.98f));
+      ImGui::TextWrapped    ("If you run into problems with a Plug-In, pressing and holding Ctrl + Shift at game startup can disable them.");
+      ImGui::PopStyleColor  ();
+
+
+      if (changed)
+      {
+        if (reshade_unofficial)
+          reshade_official = false;
+
+        if (reshade_official)
+          reshade_unofficial = false;
+
+        SavePlugInPreference (dll_ini, reshade_official,   imp_name_reshade,    L"ThirdParty", order,    imp_path_reshade   );
+        SavePlugInPreference (dll_ini, reshade_unofficial, imp_name_reshade_ex, L"Unofficial", order_ex, imp_path_reshade_ex);
+      }
+
       ImGui::TreePop ();
     }
 
@@ -4017,8 +4701,8 @@ extern float SK_ImGui_PulseNav_Strength;
           size_t num_achievements = SK_SteamAPI_GetNumPossibleAchievements      ();
 
           snprintf ( szProgress, 127, "%.2f%% of Achievements Unlocked (%u/%u)",
-                       ratio * 100.0f, (uint32_t)(ratio * (float)num_achievements),
-                                       (uint32_t)                num_achievements );
+                       ratio * 100.0f, static_cast <uint32_t> ((ratio * static_cast <float> (num_achievements))),
+                                       static_cast <uint32_t> (                              num_achievements) );
 
           ImGui::PushStyleColor ( ImGuiCol_PlotHistogram, ImColor (0.90f, 0.72f, 0.07f, 0.80f) ); 
           ImGui::ProgressBar    ( ratio,
@@ -4026,11 +4710,12 @@ extern float SK_ImGui_PulseNav_Strength;
                                       szProgress );
           ImGui::PopStyleColor  ();
 
-          int friends = SK_SteamAPI_GetNumFriends ();
+          int friends =
+            SK_SteamAPI_GetNumFriends ();
 
           if (friends && ImGui::IsItemHovered ())
           {
-            ImGui::BeginTooltip ( );
+            ImGui::BeginTooltip   ();
 
             static int num_records = 0;
 
@@ -4054,7 +4739,7 @@ extern float SK_ImGui_PulseNav_Strength;
               if (percent > 0.0f)
               {
                 ImGui::ProgressBar    ( percent, ImVec2 (io.DisplaySize.x * 0.0816f, 0.0f) );
-                ImGui::SameLine       ();
+                ImGui::SameLine       ( );
                 ImGui::PushStyleColor (ImGuiCol_Text, ImColor (.81f, 0.81f, 0.81f));
                 ImGui::Text           (szName);
                 ImGui::PopStyleColor  (1);
@@ -4063,9 +4748,9 @@ extern float SK_ImGui_PulseNav_Strength;
 
                 if (cur_line >= max_lines)
                 {
-                  ImGui::EndGroup   ();
-                  ImGui::SameLine   ();
-                  ImGui::BeginGroup ();
+                  ImGui::EndGroup     ( );
+                  ImGui::SameLine     ( );
+                  ImGui::BeginGroup   ( );
                   cur_line = 0;
                 }
 
@@ -4144,12 +4829,12 @@ extern float SK_ImGui_PulseNav_Strength;
               changed |=
                 ImGui::RadioButton ("Animated ##AchievementPopup",   &mode, 2);
 
-                ImGui::SameLine   ( );
-                ImGui::Combo      ( "##PopupLoc",         &config.steam.achievements.popup.origin,
-                                            "Top-Left\0"
-                                            "Top-Right\0"
-                                            "Bottom-Left\0"
-                                            "Bottom-Right\0\0" );
+                ImGui::SameLine    ( );
+                ImGui::Combo       ( "##PopupLoc",         &config.steam.achievements.popup.origin,
+                                             "Top-Left\0"
+                                             "Top-Right\0"
+                                             "Bottom-Left\0"
+                                             "Bottom-Right\0\0" );
 
               if ( changed )
               {
@@ -4170,11 +4855,13 @@ extern float SK_ImGui_PulseNav_Strength;
                 ImGui::TreePush   ("");
                 ImGui::Text       ("Duration:"); ImGui::SameLine ();
 
-                float duration = std::max ( 1.0f, ( (float)config.steam.achievements.popup.duration / 1000.0f ) );
+                float duration =
+                  std::max ( 1.0f, ( (float)config.steam.achievements.popup.duration / 1000.0f ) );
 
                 if ( ImGui::SliderFloat ( "##PopupDuration", &duration, 1.0f, 30.0f, "%.2f Seconds" ) )
                 {
-                  config.steam.achievements.popup.duration = static_cast <LONG> ( duration * 1000.0f );
+                  config.steam.achievements.popup.duration =
+                    static_cast <LONG> ( duration * 1000.0f );
                 }
                 ImGui::TreePop   ( );
                 ImGui::EndGroup  ( );
@@ -4220,21 +4907,34 @@ extern float SK_ImGui_PulseNav_Strength;
         if (ImGui::CollapsingHeader ("Compatibility"))
         {
           ImGui::TreePush ("");
-          ImGui::Checkbox (" Load Steam Overlay Early  ", &config.steam.preload_overlay);
+          ImGui::Checkbox (" Bypass Online DRM Checks  ",          &config.steam.spoof_BLoggedOn);
+
+          if (ImGui::IsItemHovered ())
+          {
+            ImGui::BeginTooltip ();
+            ImGui::TextColored  (ImColor::HSV (0.159f, 1.0f, 1.0f), "Fixes pesky games that use SteamAPI to deny Offline mode");
+            ImGui::Separator    ();
+            ImGui::BulletText   ("This is a much larger problem than you would believe.");
+            ImGui::BulletText   ("This also fixes some games that crash when Steam disconnects (unrelated to DRM).");
+            ImGui::EndTooltip   ();
+          }
+
+          ImGui::Checkbox (" Load Steam Overlay Early  ",          &config.steam.preload_overlay);
 
           if (ImGui::IsItemHovered ())
             ImGui::SetTooltip ("Can make the Steam Overlay work in situations it otherwise would not.");
 
-          ImGui::Checkbox (" Load Steam Client DLL Early  ", &config.steam.preload_client);
+          ImGui::SameLine ();
+
+          ImGui::Checkbox (" Load Steam Client DLL Early  ",       &config.steam.preload_client);
 
           if (ImGui::IsItemHovered ())
             ImGui::SetTooltip ("May prevent some Steam DRM-based games from hanging at startup.");
 
-          ImGui::SameLine ();
-
           ImGui::Checkbox (" Disable User Stats Receipt Callback", &config.steam.block_stat_callback);
 
-          if (ImGui::IsItemHovered ()) {
+          if (ImGui::IsItemHovered ())
+          {
             ImGui::BeginTooltip ();
             ImGui::Text         ("Fix for Games that Panic when Flooded with Achievement Data");
             ImGui::Separator    ();
@@ -4253,12 +4953,15 @@ extern float SK_ImGui_PulseNav_Strength;
         valid = valid && (! SK_Steam_PiratesAhoy ());
 
         if (valid)
+        {
           ImGui::MenuItem ("Piracy not detected!", "", &valid, false);
+        }
+
         else
         {
           ImGui::MenuItem (u8"SpecialK wants you to walk the plank!", "", &valid, false);
           {
-			
+            
           }
         }
 
@@ -4327,10 +5030,13 @@ extern float SK_ImGui_PulseNav_Strength;
         snprintf ( szLabel, 511,
                      "Fetching Achievements... %.2f%% (%u/%u) : %s",
                        100.0f * ratio,
-                     (uint32_t)(ratio * (float)friends),
-                                     (uint32_t)friends,
+static_cast <uint32_t> (
+                        ratio * static_cast <float>    (friends)
+                       ),
+                                static_cast <uint32_t> (friends),
                       SK_SteamAPI_GetFriendName (
-                       (uint32_t)(ratio * (float)friends)
+static_cast <uint32_t> (
+                        ratio * static_cast <float>    (friends))
                       )
                  );
         
@@ -4350,7 +5056,7 @@ extern float SK_ImGui_PulseNav_Strength;
   SK_ImGui_LastWindowCenter.y = pos.y + size.y / 2.0f;
 
   if (recenter)
-    SK_ImGui_CenterCursorOnWindow ();
+    SK_ImGui_CenterCursorAtPos ();
 
 
   if (show_test_window)
@@ -4358,6 +5064,50 @@ extern float SK_ImGui_PulseNav_Strength;
 
   if (show_shader_mod_dlg)
     show_shader_mod_dlg = SK_D3D11_ShaderModDlg ();
+
+  if (show_d3d9_shader_mod_dlg)
+    show_d3d9_shader_mod_dlg = SK_D3D9_TextureModDlg ();
+
+
+  if (want_exit)
+  {
+    ImGui::SetNextWindowPosCenter       (ImGuiSetCond_Always);
+    ImGui::SetNextWindowSizeConstraints ( ImVec2 (360.0f, 40.0f), ImVec2 ( 0.925f * io.DisplaySize.x,
+                                                                           0.925f * io.DisplaySize.y ) );
+    ImGui::SetNextWindowFocus           (                                                               );
+
+    ImGui::OpenPopup ("Confirm Forced Software Termination");
+
+    if ( ImGui::BeginPopupModal ( "Confirm Forced Software Termination",
+                                    nullptr,
+                                      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_ShowBorders |
+                                      ImGuiWindowFlags_NoScrollbar      | ImGuiWindowFlags_NoScrollWithMouse )
+       )
+    {
+      ImGui::TextColored ( ImColor::HSV (0.075f, 1.0f, 1.0f), "\n    You will lose any unsaved game progress.    \n\n");
+
+      ImGui::Separator ();
+
+      ImGui::TextColored ( ImColor::HSV (0.15f, 1.0f, 1.0f), "   Confirm Exit?      " );
+
+      ImGui::SameLine ();
+
+      ImGui::Spacing (); ImGui::SameLine ();
+
+      if (ImGui::Button ("Okay"))
+        ExitProcess (0x00);
+
+      ImGui::PushItemWidth (ImGui::GetWindowContentRegionWidth () * 0.33f); ImGui::SameLine (); ImGui::Text (""); ImGui::SameLine (); ImGui::PopItemWidth ();
+
+      if (ImGui::Button ("Cancel"))
+      {
+        want_exit = false;
+        ImGui::CloseCurrentPopup ();
+      }
+
+      ImGui::EndPopup ();
+    }
+  }
 
 
   ImGui::End   ();
@@ -4540,10 +5290,37 @@ SK_NvAPI_GetGPUInfoStr (void)
 #endif
 
 
-#include <string>
-#include <vector>
+typedef UINT (__stdcall *SK_ImGui_DrawCallback_pfn)     (void *user);
+typedef bool (__stdcall *SK_ImGui_OpenCloseCallback_pfn)(void *user);
 
-#include <SpecialK/render_backend.h>
+struct
+{
+  SK_ImGui_DrawCallback_pfn fn   = nullptr;
+  void*                     data = nullptr;
+} SK_ImGui_DrawCallback;
+
+struct
+{
+  SK_ImGui_OpenCloseCallback_pfn fn   = nullptr;
+  void*                          data = nullptr;
+} SK_ImGui_OpenCloseCallback;
+
+__declspec (noinline)
+IMGUI_API
+void
+SK_ImGui_InstallDrawCallback (SK_ImGui_DrawCallback_pfn fn, void* user)
+{
+  SK_ImGui_DrawCallback.fn   = fn;
+  SK_ImGui_DrawCallback.data = user;
+}
+
+IMGUI_API
+void
+SK_ImGui_InstallOpenCloseCallback (SK_ImGui_OpenCloseCallback_pfn fn, void* user)
+{
+  SK_ImGui_OpenCloseCallback.fn   = fn;
+  SK_ImGui_OpenCloseCallback.data = user;
+}
 
 
 
@@ -4555,6 +5332,17 @@ DWORD
 SK_ImGui_DrawFrame ( _Unreferenced_parameter_ DWORD  dwFlags, 
                                               LPVOID lpUser )
 {
+//  static bool skip;
+//
+//  if (dwFlags == 0)
+//    skip = true;
+//
+//  if (skip)
+//    return 0;
+//
+//  if (dwFlags == 1)
+//    skip = false;
+
   UNREFERENCED_PARAMETER (dwFlags);
   UNREFERENCED_PARAMETER (lpUser);
 
@@ -4572,14 +5360,14 @@ SK_ImGui_DrawFrame ( _Unreferenced_parameter_ DWORD  dwFlags,
     ImGui_ImplGL3_NewFrame ();
   }
 
-  else if ((int)rb.api & (int)SK_RenderAPI::D3D9)
+  else if (static_cast <int> (rb.api) & static_cast <int> (SK_RenderAPI::D3D9))
   {
     d3d9 = true;
 
     ImGui_ImplDX9_NewFrame ();
   }
 
-  else if ((int)rb.api & (int)SK_RenderAPI::D3D11)
+  else if (static_cast <int> (rb.api) & static_cast <int> (SK_RenderAPI::D3D11))
   {
     d3d11 = true;
 
@@ -4635,7 +5423,10 @@ SK_ImGui_DrawFrame ( _Unreferenced_parameter_ DWORD  dwFlags,
 
 
   if (SK_ImGui_Visible)
+  {
+    SK_ControlPanel_Activated = true;
     keep_open = SK_ImGui_ControlPanel ();
+  }
 
 
   for (auto& widget : widgets)
@@ -4645,6 +5436,30 @@ SK_ImGui_DrawFrame ( _Unreferenced_parameter_ DWORD  dwFlags,
 
     if (widget->isVisible ())
       widget->draw_base ();
+  }
+
+
+  if (SK_ImGui_DrawCallback.fn != nullptr)
+  {
+    if (SK_ImGui_DrawCallback.fn (SK_ImGui_DrawCallback.data) > 0)
+    {
+      if (! SK_ImGui_Active ())
+      {
+        ImGuiWindow* pWin =
+          ImGui::FindWindowByName ("ReShade 3.0.8 by crosire; modified for Special K by Kaldaien###ReShade_Main");
+
+        if (pWin)
+        {
+          SK_ImGui_CenterCursorAtPos (pWin->Rect ().GetCenter ());
+          ImGui::SetWindowFocus      (pWin->Name);
+        }
+      }
+
+      SK_ReShade_Visible = true;
+    }
+
+    else
+      SK_ReShade_Visible = false;
   }
 
 
@@ -4658,11 +5473,11 @@ SK_ImGui_DrawFrame ( _Unreferenced_parameter_ DWORD  dwFlags,
       static bool move = true;
       if (move)
       {
-        ImGui::SetNextWindowPos  (ImVec2 ((io.DisplaySize.x + font_size * 35) / 2.0f, 0.0f), ImGuiSetCond_Always);
+        ImGui::SetNextWindowPos (ImVec2 ((io.DisplaySize.x + font_size * 35) / 2.0f, 0.0f), ImGuiSetCond_Always);
         move = false;
       }
 
-      ImGui::SetNextWindowSize (ImVec2 (font_size * 35, font_size_multiline * 6.25f), ImGuiSetCond_Always);
+      ImGui::SetNextWindowSize  (ImVec2 (font_size * 35, font_size_multiline * 6.25f),      ImGuiSetCond_Always);
       
       ImGui::Begin            ("###Widget_TexCacheD3D11", nullptr, ImGuiWindowFlags_NoTitleBar         | ImGuiWindowFlags_NoResize         |
                                                                    ImGuiWindowFlags_NoScrollbar        | ImGuiWindowFlags_AlwaysAutoResize |
@@ -4680,8 +5495,8 @@ SK_ImGui_DrawFrame ( _Unreferenced_parameter_ DWORD  dwFlags,
 
   if (io.WantMoveMouse)
   {
-    SK_ImGui_Cursor.pos.x = (LONG)io.MousePos.x;
-    SK_ImGui_Cursor.pos.y = (LONG)io.MousePos.y;
+    SK_ImGui_Cursor.pos.x = static_cast <LONG> (io.MousePos.x);
+    SK_ImGui_Cursor.pos.y = static_cast <LONG> (io.MousePos.y);
 
     POINT screen_pos = SK_ImGui_Cursor.pos;
 
@@ -4753,9 +5568,12 @@ SK_ImGui_Toggle (void)
   bool d3d9  = false;
   bool gl    = false;
 
-  if ((int)SK_GetCurrentRenderBackend ().api & (int)SK_RenderAPI::D3D9)   d3d9  = true;
-  if ((int)SK_GetCurrentRenderBackend ().api & (int)SK_RenderAPI::D3D11)  d3d11 = true;
-  if (     SK_GetCurrentRenderBackend ().api ==     SK_RenderAPI::OpenGL) gl    = true;
+  SK_RenderBackend& rb =
+    SK_GetCurrentRenderBackend ();
+
+  if (static_cast <int> (rb.api) & static_cast <int> (SK_RenderAPI::D3D9) )  d3d9  = true;
+  if (static_cast <int> (rb.api) & static_cast <int> (SK_RenderAPI::D3D11))  d3d11 = true;
+  if (                   rb.api ==                    SK_RenderAPI::OpenGL)  gl    = true;
 
   auto EnableEULAIfPirate = [](void) ->
   bool
@@ -4765,7 +5583,7 @@ SK_ImGui_Toggle (void)
 
   if (d3d9 || d3d11 || gl)
   {
-    if (SK_ImGui_Visible)
+    if (SK_ImGui_Active ())
       GetKeyboardState_Original (__imgui_keybd_state);
 
     SK_ImGui_Visible = (! SK_ImGui_Visible);
@@ -4841,22 +5659,24 @@ SK_ImGui_Toggle (void)
 
     reset_frame_history = true;
   }
+
+  if ((! SK_ImGui_Visible) && SK_ImGui_OpenCloseCallback.fn != nullptr)
+  {
+    if (SK_ImGui_OpenCloseCallback.fn (SK_ImGui_OpenCloseCallback.data))
+      SK_ImGui_OpenCloseCallback.fn (SK_ImGui_OpenCloseCallback.data);
+  }
 }
 
-extern LONG SK_RawInput_MouseX;
-extern LONG SK_RawInput_MouseY;
-extern POINT SK_RawInput_Mouse;
-
 void
-SK_ImGui_CenterCursorOnWindow (void)
+SK_ImGui_CenterCursorAtPos (ImVec2 center)
 {
   ImGuiIO& io (ImGui::GetIO ());
 
-  SK_ImGui_Cursor.pos.x = (LONG)(SK_ImGui_LastWindowCenter.x);
-  SK_ImGui_Cursor.pos.y = (LONG)(SK_ImGui_LastWindowCenter.y);
+  SK_ImGui_Cursor.pos.x = static_cast <LONG> (center.x);
+  SK_ImGui_Cursor.pos.y = static_cast <LONG> (center.y);
   
-  io.MousePos.x = SK_ImGui_LastWindowCenter.x;
-  io.MousePos.y = SK_ImGui_LastWindowCenter.y;
+  io.MousePos.x = center.x;
+  io.MousePos.y = center.y;
 
   POINT screen_pos = SK_ImGui_Cursor.pos;
 
@@ -4864,24 +5684,33 @@ SK_ImGui_CenterCursorOnWindow (void)
     SK_ImGui_Cursor.orig_img = GetCursor ();
 
   SK_ImGui_Cursor.LocalToScreen (&screen_pos);
-  SetCursorPos_Original ( screen_pos.x,
-                          screen_pos.y );
+  SetCursorPos_Original         ( screen_pos.x,
+                                  screen_pos.y );
 
   io.WantCaptureMouse = true;
 
   SK_ImGui_UpdateCursor ();
 }
 
-
-
 void
+SK_ImGui_CenterCursorOnWindow (void)
+{
+  return SK_ImGui_CenterCursorAtPos ();
+}
+
+
+
+__declspec (dllexport)
+void
+__stdcall
 SK_ImGui_KeybindDialog (SK_Keybind* keybind)
 {
   ImGuiIO& io (ImGui::GetIO ());
 
   const  float font_size = ImGui::GetFont ()->FontSize * io.FontGlobalScale;
 
-  ImGui::SetNextWindowSizeConstraints ( ImVec2 (font_size * 9, font_size * 3), ImVec2 (font_size * 30, font_size * 6));
+  ImGui::SetNextWindowSizeConstraints ( ImVec2   (font_size *  9, font_size * 3),
+                                          ImVec2 (font_size * 30, font_size * 6) );
 
   if (ImGui::BeginPopupModal (keybind->bind_name, NULL, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_ShowBorders |
                                                         ImGuiWindowFlags_NoCollapse       | ImGuiWindowFlags_NoSavedSettings))
@@ -4917,4 +5746,131 @@ SK_ImGui_KeybindDialog (SK_Keybind* keybind)
 
     ImGui::EndPopup ();
   }
+}
+
+struct SK_GamepadCombo_V0 {
+  const wchar_t** button_names     = nullptr;
+  std::string     combo_name       =  "";
+  std::wstring    unparsed         = L"";
+  int             buttons          = 0;
+};
+
+bool SK_ImGui_GamepadComboDialogActive = false;
+
+__declspec (dllexport)
+INT
+__stdcall
+SK_ImGui_GamepadComboDialog0 (SK_GamepadCombo_V0* combo)
+{
+  ImGuiIO& io (ImGui::GetIO ());
+
+  const  float font_size = ImGui::GetFont ()->FontSize * io.FontGlobalScale;
+
+  ImGui::SetNextWindowSizeConstraints ( ImVec2   (font_size *  9, font_size * 3),
+                                          ImVec2 (font_size * 30, font_size * 6) );
+
+  if (ImGui::BeginPopupModal (combo->combo_name.c_str (), NULL, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_ShowBorders |
+                                                                ImGuiWindowFlags_NoCollapse       | ImGuiWindowFlags_NoSavedSettings))
+  {
+    SK_ImGui_GamepadComboDialogActive = true;
+    nav_usable                        = false;
+    io.NavUsable                      = false;
+    io.NavActive                      = false;
+
+    io.WantCaptureKeyboard = true;
+
+    static WORD                last_buttons     = 0;
+    static DWORD               last_change      = 0;
+    static BYTE                last_trigger_l   = 0;
+    static BYTE                last_trigger_r   = 0;
+    static SK_GamepadCombo_V0* last_combo       = nullptr;
+           XINPUT_STATE        state            = { };
+    static std::wstring        unparsed         = L"";
+
+    if (SK_XInput_PollController (0, &state))
+    {
+      if (last_combo != combo)
+      {
+        unparsed       = L"";
+        last_combo     = combo;
+        last_change    = 0;
+        last_buttons   = state.Gamepad.wButtons;
+        last_trigger_l = state.Gamepad.bLeftTrigger;
+        last_trigger_r = state.Gamepad.bRightTrigger;
+      }
+
+      if ( last_buttons != state.Gamepad.wButtons || ( ( state.Gamepad.bLeftTrigger  > XINPUT_GAMEPAD_TRIGGER_THRESHOLD && last_trigger_l < XINPUT_GAMEPAD_TRIGGER_THRESHOLD ) ||
+                                                       ( state.Gamepad.bLeftTrigger  < XINPUT_GAMEPAD_TRIGGER_THRESHOLD && last_trigger_l > XINPUT_GAMEPAD_TRIGGER_THRESHOLD ) )  ||
+                                                     ( ( state.Gamepad.bRightTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD && last_trigger_r < XINPUT_GAMEPAD_TRIGGER_THRESHOLD ) ||
+                                                       ( state.Gamepad.bRightTrigger < XINPUT_GAMEPAD_TRIGGER_THRESHOLD && last_trigger_r > XINPUT_GAMEPAD_TRIGGER_THRESHOLD ) ) )
+      {
+        last_trigger_l = state.Gamepad.bLeftTrigger;
+        last_trigger_r = state.Gamepad.bRightTrigger;
+
+        std::queue <const wchar_t*> buttons;
+
+        if (state.Gamepad.bLeftTrigger  > XINPUT_GAMEPAD_TRIGGER_THRESHOLD)
+          buttons.push (combo->button_names [16]);
+
+        if (state.Gamepad.bRightTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD)
+          buttons.push (combo->button_names [17]);
+
+        for (int i = 0; i < 16; i++)
+        {
+          if (state.Gamepad.wButtons & ( 1 << i ))
+          {
+            buttons.push (combo->button_names [i]);
+          }
+        }
+
+        unparsed = L"";
+
+        while (! buttons.empty ())
+        {
+          unparsed += buttons.front ();
+                      buttons.pop   ();
+
+          if (! buttons.empty ())
+            unparsed += L"+";
+        }
+
+        last_buttons = state.Gamepad.wButtons;
+        last_change  = timeGetTime ();
+      }
+
+      else if (last_change > 0 && last_change < timeGetTime () - 1000UL)
+      {
+        combo->unparsed = unparsed;
+
+        for (int i = 0; i < 16; i++)
+        {
+          io.NavInputsDownDuration     [i] = 0.1f;
+          io.NavInputsDownDurationPrev [i] = 0.1f;
+        }
+
+        SK_ImGui_GamepadComboDialogActive = false;
+        nav_usable                        = true;
+        io.NavUsable                      = true;
+        io.NavActive                      = true;
+        last_combo                        = nullptr;
+        ImGui::CloseCurrentPopup ();
+        ImGui::EndPopup          ();
+        return 1;
+      }
+    }
+
+    if (io.KeysDown [VK_ESCAPE])
+    {
+      last_combo                          = nullptr;
+      ImGui::CloseCurrentPopup ();
+      ImGui::EndPopup          ();
+      return -1;
+    }
+
+    ImGui::Text ("Binding:  %ws", unparsed.c_str ());
+
+    ImGui::EndPopup ();
+  }
+
+  return 0;
 }

@@ -18,8 +18,6 @@
  *   If not, see <http://www.gnu.org/licenses/>.
  *
 **/
-#define _CRT_SECURE_NO_WARNINGS
-#define _CRT_NON_CONFORMING_SWPRINTFS
 
 #include <Windows.h>
 #include <SpecialK/diagnostics/compatibility.h>
@@ -30,7 +28,6 @@
 #include <DbgHelp.h>
 
 #include <psapi.h>
-#pragma comment (lib, "psapi.lib")
 
 #include <Commctrl.h>
 #pragma comment (lib,    "advapi32.lib")
@@ -69,12 +66,12 @@
 #define SK_CHAR(x) (_T)        (constexpr _T      (std::type_index (typeid (_T)) == std::type_index (typeid (wchar_t))) ? (      _T  )(_L(x)) : (      _T  )(x))
 #define SK_TEXT(x) (const _T*) (constexpr LPCVOID (std::type_index (typeid (_T)) == std::type_index (typeid (wchar_t))) ? (const _T *)(_L(x)) : (const _T *)(x))
 
-typedef PSTR    (__stdcall *StrStrI_pfn)            (LPCVOID lpFirst,   LPCVOID lpSearch);
-typedef BOOL    (__stdcall *PathRemoveFileSpec_pfn) (LPVOID  lpPath);
-typedef HMODULE (__stdcall *LoadLibrary_pfn)        (LPCVOID lpLibFileName);
-typedef LPVOID  (__cdecl   *strncpy_pfn)            (LPVOID  lpDest,    LPCVOID lpSource,     size_t   nCount);
-typedef LPVOID  (__stdcall *lstrcat_pfn)            (LPVOID  lpString1, LPCVOID lpString2);
-typedef BOOL    (__stdcall *GetModuleHandleEx_pfn)  (DWORD   dwFlags,   LPCVOID lpModuleName, HMODULE* phModule);
+using StrStrI_pfn            = PSTR    (__stdcall *)(LPCVOID lpFirst,   LPCVOID lpSearch);
+using PathRemoveFileSpec_pfn = BOOL    (__stdcall *)(LPVOID  lpPath);
+using LoadLibrary_pfn        = HMODULE (__stdcall *)(LPCVOID lpLibFileName);
+using strncpy_pfn            = LPVOID  (__cdecl   *)(LPVOID  lpDest,    LPCVOID lpSource,     size_t   nCount);
+using lstrcat_pfn            = LPVOID  (__stdcall *)(LPVOID  lpString1, LPCVOID lpString2);
+using GetModuleHandleEx_pfn  = BOOL    (__stdcall *)(DWORD   dwFlags,   LPCVOID lpModuleName, HMODULE* phModule);
 
 
 extern DWORD __stdcall SK_RaptrWarn (LPVOID user);
@@ -320,12 +317,24 @@ SK_LoadLibrary_IsPinnable (const _T* pStr)
                                                             (StrStrI_pfn) &StrStrIA );
   static std::vector <const _T*> pinnable_libs =
   {
-    SK_TEXT ("CEGUI"), SK_TEXT ("OpenCL"),
+    SK_TEXT ("OpenCL"),    SK_TEXT ("CEGUI"),
+    SK_TEXT ("perfos"),    SK_TEXT ("avrt"),
 
-    // Some software repeatedly loads and unloads this, which can
-    //   cause TLS-related problems if left unchecked... just leave
-    //     the damn thing loaded permanently!
-    SK_TEXT ("d3dcompiler_")
+    SK_TEXT ("AUDIOSES"),  SK_TEXT ("HID"),
+    SK_TEXT ("d3dx11_43"), SK_TEXT ("d3dx9_43"),
+
+#ifndef _WIN64
+    SK_TEXT ("steam_api"),   SK_TEXT ("nvapi"),
+#else
+    SK_TEXT ("steam_api64"), SK_TEXT ("nvapi64"),
+#endif
+
+    //// Some software repeatedly loads and unloads this, which can
+    ////   cause TLS-related problems if left unchecked... just leave
+    ////     the damn thing loaded permanently!
+    SK_TEXT ("d3dcompiler_"),
+
+    //SK_TEXT ("magicFiles\\FFX\\magic_0") // Final Fantasy X / X-2
   };
 
   for (auto it : pinnable_libs)
@@ -424,30 +433,32 @@ SK_TraceLoadLibrary (       HMODULE hCallingMod,
   {
     if (config.compatibility.rehook_loadlibrary)
     {
-      // This is silly, this many string comparions per-load is
+      // This is silly, this many string comparisons per-load is
       //   not good. Hash the string and compare it in the future.
       if ( StrStrIW (wszModName, L"Activation")          ||
            StrStrIW (wszModName, L"rxcore")              ||
            StrStrIW (wszModName, L"GeDoSaTo")            ||
            StrStrIW (wszModName, L"gameoverlayrenderer") ||
            StrStrIW (wszModName, L"RTSSHooks")           ||
+           StrStrIW (wszModName, L"Nahimic2DevProps")    ||
+           StrStrIW (wszModName, L"ReShade")             ||
            StrStrIW (wszModName, L"Activation") )
       {   
         SK_ReHookLoadLibrary ();
       }
     }
 
-    if ( StrStrIW (wszModName, L"Nahimic2DevProps")    ||
-         StrStrIW (wszModName, L"ReShade") )
-    {
-      static int tries = 0;
-
-      // If these things ever repeatedly try to rehook what we
-      //   just rehooked, then give up eventuall to prevent
-      //     infinite recursion.
-      if (tries++ < 2)
-        SK_ReHookLoadLibrary ();
-    }
+    //if ( StrStrIW (wszModName, L"Nahimic2DevProps")    ||
+    //     StrStrIW (wszModName, L"ReShade") )
+    //{
+    //  static int tries = 0;
+    //
+    //  // If these things ever repeatedly try to rehook what we
+    //  //   just rehooked, then give up eventuall to prevent
+    //  //     infinite recursion.
+    //  if (tries++ < 2)
+    //    SK_ReHookLoadLibrary ();
+    //}
   }
 
   if (hCallingMod != SK_GetDLL ()/* && SK_IsInjected ()*/)
@@ -586,7 +597,7 @@ LoadLibraryA_Detour (LPCSTR lpFileName)
   LPVOID lpRet = _ReturnAddress ();
 
   if (lpFileName == nullptr)
-    return NULL;
+    return nullptr;
 
   SK_LockDllLoader ();
 
@@ -614,17 +625,13 @@ LoadLibraryA_Detour (LPCSTR lpFileName)
     free ( static_cast <void *> (compliant_path) );
 
     SK_UnlockDllLoader ();
-    return NULL;
+    return nullptr;
   }
 
 
   HMODULE hMod = hModEarly;
 
-  __try
-  {
-    __try                                  { hMod = LoadLibraryA_Original (lpFileName); }
-    __except ( EXCEPTION_CONTINUE_SEARCH ) {                                            }
-  }
+  __try                                  { hMod = LoadLibraryA_Original (lpFileName); }
   __except (EXCEPTION_EXECUTE_HANDLER)
   {
     dll_log.Log ( L"[DLL Loader]  ** Crash Prevented **  DLL raised an exception during"
@@ -653,7 +660,7 @@ LoadLibraryW_Detour (LPCWSTR lpFileName)
   LPVOID lpRet = _ReturnAddress ();
 
   if (lpFileName == nullptr)
-    return NULL;
+    return nullptr;
 
  SK_LockDllLoader ();
 
@@ -679,17 +686,13 @@ LoadLibraryW_Detour (LPCWSTR lpFileName)
     free (static_cast <void *> (compliant_path));
 
     SK_UnlockDllLoader ();
-    return NULL;
+    return nullptr;
   }
 
 
   HMODULE hMod = hModEarly;
 
-  __try
-  {
-    __try                                  { hMod = LoadLibraryW_Original (lpFileName); }
-    __except ( EXCEPTION_CONTINUE_SEARCH ) {                                            }
-  }
+  __try                                  { hMod = LoadLibraryW_Original (lpFileName); }
   __except (EXCEPTION_EXECUTE_HANDLER)
   {
     dll_log.Log ( L"[DLL Loader]  ** Crash Prevented **  DLL raised an exception during"
@@ -718,7 +721,7 @@ LoadPackagedLibrary_Detour (LPCWSTR lpLibFileName, DWORD Reserved)
   LPVOID lpRet = _ReturnAddress ();
 
   if (lpLibFileName == nullptr)
-    return NULL;
+    return nullptr;
 
  SK_LockDllLoader ();
 
@@ -744,7 +747,7 @@ LoadPackagedLibrary_Detour (LPCWSTR lpLibFileName, DWORD Reserved)
     free (static_cast <void *> (compliant_path));
 
     SK_UnlockDllLoader ();
-    return NULL;
+    return nullptr;
   }
 
 
@@ -774,7 +777,7 @@ LoadLibraryExA_Detour (
   LPVOID lpRet = _ReturnAddress ();
 
   if (lpFileName == nullptr)
-    return NULL;
+    return nullptr;
 
   char*           compliant_path = _strdup (lpFileName);
   SK_FixSlashesA (compliant_path);
@@ -807,22 +810,18 @@ LoadLibraryExA_Detour (
     SetLastError (0);
   }
 
-  if (hModEarly == NULL && BlacklistLibrary (lpFileName))
+  if (hModEarly == nullptr && BlacklistLibrary (lpFileName))
   {
     free (static_cast <void *> (compliant_path));
 
     SK_UnlockDllLoader ();
-    return NULL;
+    return nullptr;
   }
 
 
   HMODULE hMod = hModEarly;
 
-  __try
-  {
-    __try                                  { hMod = LoadLibraryExA_Original (lpFileName, hFile, dwFlags); }
-    __except ( EXCEPTION_CONTINUE_SEARCH ) {                                                              }
-  }
+  __try                                  { hMod = LoadLibraryExA_Original (lpFileName, hFile, dwFlags); }
   __except (EXCEPTION_EXECUTE_HANDLER)
   {
     dll_log.Log ( L"[DLL Loader]  ** Crash Prevented **  DLL raised an exception during"
@@ -856,7 +855,7 @@ LoadLibraryExW_Detour (
   LPVOID lpRet = _ReturnAddress ();
 
   if (lpFileName == nullptr)
-    return NULL;
+    return nullptr;
 
   wchar_t*        compliant_path = _wcsdup (lpFileName);
   SK_FixSlashesW (compliant_path);
@@ -889,22 +888,18 @@ LoadLibraryExW_Detour (
     SetLastError (0);
   }
 
-  if (hModEarly == NULL && BlacklistLibrary (lpFileName))
+  if (hModEarly == nullptr && BlacklistLibrary (lpFileName))
   {
     free (static_cast <void *> (compliant_path));
 
     SK_UnlockDllLoader ();
-    return NULL;
+    return nullptr;
   }
 
 
   HMODULE hMod = hModEarly;
 
-  __try
-  {
-    __try                                  { hMod = LoadLibraryExW_Original (lpFileName, hFile, dwFlags); }
-    __except ( EXCEPTION_CONTINUE_SEARCH ) {                                                              }
-  }
+  __try                                  { hMod = LoadLibraryExW_Original (lpFileName, hFile, dwFlags); }
   __except (EXCEPTION_EXECUTE_HANDLER)
   {
     dll_log.Log ( L"[DLL Loader]  ** Crash Prevented **  DLL raised an exception during"
@@ -982,10 +977,11 @@ SK_ReHookLoadLibrary (void)
     _loader_hooks.LoadLibraryA_target = nullptr;
   }
 
-  SK_CreateDLLHook2 ( L"kernel32.dll", "LoadLibraryA",
-                     LoadLibraryA_Detour,
-           (LPVOID*)&LoadLibraryA_Original,
-                    &_loader_hooks.LoadLibraryA_target );
+  SK_CreateDLLHook2 (      L"kernel32.dll",
+                            "LoadLibraryA",
+                             LoadLibraryA_Detour,
+    static_cast_p2p <void> (&LoadLibraryA_Original),
+                           &_loader_hooks.LoadLibraryA_target );
 
   MH_QueueEnableHook (_loader_hooks.LoadLibraryA_target);
 
@@ -996,10 +992,11 @@ SK_ReHookLoadLibrary (void)
     _loader_hooks.LoadLibraryW_target = nullptr;
   }
 
-  SK_CreateDLLHook2 ( L"kernel32.dll", "LoadLibraryW",
-                     LoadLibraryW_Detour,
-           (LPVOID*)&LoadLibraryW_Original,
-                    &_loader_hooks.LoadLibraryW_target );
+  SK_CreateDLLHook2 (      L"kernel32.dll",
+                            "LoadLibraryW",
+                             LoadLibraryW_Detour,
+    static_cast_p2p <void> (&LoadLibraryW_Original),
+                           &_loader_hooks.LoadLibraryW_target );
 
   MH_QueueEnableHook (_loader_hooks.LoadLibraryW_target);
 
@@ -1012,10 +1009,11 @@ SK_ReHookLoadLibrary (void)
       _loader_hooks.LoadPackagedLibrary_target = nullptr;
     }
 
-    SK_CreateDLLHook2 ( L"kernel32.dll", "LoadPackagedLibrary",
-                       LoadPackagedLibrary_Detour,
-             (LPVOID*)&LoadPackagedLibrary_Original,
-                      &_loader_hooks.LoadPackagedLibrary_target );
+    SK_CreateDLLHook2 (      L"kernel32.dll",
+                              "LoadPackagedLibrary",
+                               LoadPackagedLibrary_Detour,
+      static_cast_p2p <void> (&LoadPackagedLibrary_Original),
+                             &_loader_hooks.LoadPackagedLibrary_target );
 
     MH_QueueEnableHook (_loader_hooks.LoadPackagedLibrary_target);
   }
@@ -1027,10 +1025,11 @@ SK_ReHookLoadLibrary (void)
     _loader_hooks.LoadLibraryExA_target = nullptr;
   }
 
-  SK_CreateDLLHook2 ( L"kernel32.dll", "LoadLibraryExA",
-                     LoadLibraryExA_Detour,
-           (LPVOID*)&LoadLibraryExA_Original,
-                    &_loader_hooks.LoadLibraryExA_target );
+  SK_CreateDLLHook2 (      L"kernel32.dll",
+                            "LoadLibraryExA",
+                             LoadLibraryExA_Detour,
+    static_cast_p2p <void> (&LoadLibraryExA_Original),
+                           &_loader_hooks.LoadLibraryExA_target );
 
   MH_QueueEnableHook (_loader_hooks.LoadLibraryExA_target);
 
@@ -1041,10 +1040,11 @@ SK_ReHookLoadLibrary (void)
     _loader_hooks.LoadLibraryExW_target = nullptr;
   }
 
-  SK_CreateDLLHook2 ( L"kernel32.dll", "LoadLibraryExW",
-                     LoadLibraryExW_Detour,
-           (LPVOID*)&LoadLibraryExW_Original,
-                    &_loader_hooks.LoadLibraryExW_target );
+  SK_CreateDLLHook2 (      L"kernel32.dll",
+                            "LoadLibraryExW",
+                             LoadLibraryExW_Detour,
+    static_cast_p2p <void> (&LoadLibraryExW_Original),
+                           &_loader_hooks.LoadLibraryExW_target );
 
   MH_QueueEnableHook (_loader_hooks.LoadLibraryExW_target);
 
@@ -1060,10 +1060,11 @@ SK_ReHookLoadLibrary (void)
   //   to prevent this from showing up during debug sessions,
   //     don't hook this function :)
 #if 0
-  SK_CreateDLLHook2 ( L"kernel32.dll", "FreeLibrary",
-                     FreeLibrary_Detour,
-           (LPVOID*)&FreeLibrary_Original,
-                    &_loader_hooks.FreeLibrary_target );
+   SK_CreateDLLHook2 (      L"kernel32.dll",
+                             "FreeLibrary",
+                              FreeLibrary_Detour,
+     static_cast_p2p <void> (&FreeLibrary_Original),
+                            &_loader_hooks.FreeLibrary_target );
 
   MH_QueueEnableHook (_loader_hooks.FreeLibrary_target);
 #endif
@@ -1208,7 +1209,8 @@ CreateThread (nullptr, 0, [](LPVOID user) -> DWORD
 {
 #else
 {
-  LPVOID user = static_cast <LPVOID> (pWorkingSet);
+  auto user =
+    static_cast <LPVOID> (pWorkingSet);
 #endif
   static bool             init           = false;
   static CRITICAL_SECTION cs_thread_walk = { };
@@ -1224,8 +1226,10 @@ CreateThread (nullptr, 0, [](LPVOID user) -> DWORD
 
   EnterCriticalSection (&cs_thread_walk);
 
-  enum_working_set_s* pWorkingSet_ =
-    static_cast <enum_working_set_s *> (malloc (sizeof (enum_working_set_s)));
+  auto* pWorkingSet_ =
+    static_cast <enum_working_set_s *> (
+      malloc (sizeof (enum_working_set_s))
+    );
 
   memcpy (pWorkingSet_, user, sizeof (enum_working_set_s));
 
@@ -1377,7 +1381,7 @@ SK_WalkModules (int cbNeeded, HANDLE hProc, HMODULE* hMods, SK_ModuleEnum when)
 {
   SK_LockDllLoader ();
 
-  for ( int i = 0; i < (int)(cbNeeded / sizeof (HMODULE)); i++ )
+  for ( int i = 0; i < static_cast <int> (cbNeeded / sizeof (HMODULE)); i++ )
   {
     wchar_t wszModName [MAX_PATH + 2] = { };
             ZeroMemory (wszModName, sizeof (wchar_t) * (MAX_PATH + 2));
@@ -1538,10 +1542,11 @@ SK_EnumLoadedModules (SK_ModuleEnum when)
     //   and learn to deal with the fact that some symbol names will be invalid;
     //     the crash handler will load them, but certain diagnostic readings under
     //       normal operation will not.
-    enum_working_set_s* pWorkingSet = (enum_working_set_s *)&working_set;
-    SK_ThreadWalkModules (pWorkingSet);
+    auto* pWorkingSet =
+      static_cast <enum_working_set_s *> (&working_set);
 
-    SK_WalkModules (cbNeeded, hProc, hMods, when);
+    SK_ThreadWalkModules (pWorkingSet);
+    SK_WalkModules       (cbNeeded, hProc, hMods, when);
   }
 
   if (third_party_dlls.overlays.rtss_hooks != nullptr)
@@ -1629,7 +1634,7 @@ TaskDialogCallback (
 
   if (uNotification == TDN_DESTROYED)
   {
-    SK_bypass_dialog_hwnd = 0;
+    SK_bypass_dialog_hwnd = nullptr;
     InterlockedDecrementRelease (&SK_bypass_dialog_active);
   }
 
@@ -1716,13 +1721,13 @@ SK_ValidateGlobalRTSSProfile (void)
     const int     num_delay_dlls =
       sizeof (delay_dlls) / sizeof (const wchar_t *);
 
-    for (int i = 0; i < num_delay_dlls; i++)
+    for (auto& delay_dll : delay_dlls)
     {
-      if (triggers.find (delay_dlls [i]) == std::wstring::npos)
+      if (triggers.find (delay_dll) == std::wstring::npos)
       {
         valid = false;
         triggers += L",";
-        triggers += delay_dlls [i];
+        triggers += delay_dll;
       }
     }
   }
@@ -2096,7 +2101,7 @@ SK_Bypass_CRT (LPVOID user)
     {
       return
         GetFileAttributesA (
-          SK_FormatString ( "%ws\\PlugIns\\ThirdParty\\dgVoodoo\\d3dimm.dll",
+          SK_FormatString ( R"(%ws\PlugIns\ThirdParty\dgVoodoo\d3dimm.dll)",
                               std::wstring ( SK_GetDocumentsDir () + L"\\My Mods\\SpecialK" ).c_str ()
                           ).c_str ()
         ) != INVALID_FILE_ATTRIBUTES;
@@ -2332,7 +2337,7 @@ SK_Bypass_CRT (LPVOID user)
             SK_Inject_SwitchToGlobalInjectorEx (SK_GetDLLRole ());
 
             temp_dll = SK_UTF8ToWideChar (
-                         SK_FormatString ( "%ws\\My Mods\\SpecialK\\SpecialK%lu.dll",
+                         SK_FormatString ( R"(%ws\My Mods\SpecialK\SpecialK%lu.dll)",
                            SK_GetDocumentsDir ().c_str (),
 #ifndef _WIN64
                              32
@@ -2369,7 +2374,7 @@ SK_Bypass_CRT (LPVOID user)
             SK_Inject_SwitchToGlobalInjectorEx (SK_GetDLLRole ());
 
             temp_dll = SK_UTF8ToWideChar (
-                         SK_FormatString ( "%ws\\My Mods\\SpecialK\\SpecialK%lu.dll",
+                         SK_FormatString ( R"(%ws\My Mods\SpecialK\SpecialK%lu.dll)",
                            SK_GetDocumentsDir ().c_str (),
 #ifndef _WIN64
                              32
@@ -2397,7 +2402,7 @@ SK_Bypass_CRT (LPVOID user)
           else
           {
             temp_dll = SK_UTF8ToWideChar (
-                         SK_FormatString ( "%ws\\My Mods\\SpecialK\\SpecialK%lu.dll",
+                         SK_FormatString ( R"(%ws\My Mods\SpecialK\SpecialK%lu.dll)",
                            SK_GetDocumentsDir ().c_str (),
 #ifndef _WIN64
                              32
@@ -2426,7 +2431,7 @@ SK_Bypass_CRT (LPVOID user)
           {
             SK_Inject_SwitchToGlobalInjectorEx (DLL_ROLE::DXGI);
             temp_dll = SK_UTF8ToWideChar (
-                         SK_FormatString ( "%ws\\My Mods\\SpecialK\\SpecialK%lu.dll",
+                         SK_FormatString ( R"(%ws\My Mods\SpecialK\SpecialK%lu.dll)",
                            SK_GetDocumentsDir ().c_str (),
 #ifndef _WIN64
                              32
@@ -2484,7 +2489,7 @@ SK_Bypass_CRT (LPVOID user)
           {
             SK_Inject_SwitchToGlobalInjectorEx (DLL_ROLE::OpenGL);
             temp_dll = SK_UTF8ToWideChar (
-                         SK_FormatString ( "%ws\\My Mods\\SpecialK\\SpecialK%lu.dll",
+                         SK_FormatString ( R"(%ws\My Mods\SpecialK\SpecialK%lu.dll)",
                            SK_GetDocumentsDir ().c_str (),
 #ifndef _WIN64
                              32
@@ -2521,7 +2526,7 @@ SK_Bypass_CRT (LPVOID user)
             {
               SK_Inject_SwitchToGlobalInjectorEx (DLL_ROLE::D3D8);
               temp_dll = SK_UTF8ToWideChar (
-                           SK_FormatString ( "%ws\\My Mods\\SpecialK\\SpecialK%lu.dll",
+                           SK_FormatString ( R"(%ws\My Mods\SpecialK\SpecialK%lu.dll)",
                              SK_GetDocumentsDir ().c_str (),
 #ifndef _WIN64
                                32
@@ -2550,7 +2555,7 @@ SK_Bypass_CRT (LPVOID user)
               SK_Inject_SwitchToGlobalInjectorEx (DLL_ROLE::DDraw);
 
               temp_dll = SK_UTF8ToWideChar (
-                           SK_FormatString ( "%ws\\My Mods\\SpecialK\\SpecialK%lu.dll",
+                           SK_FormatString ( R"(%ws\My Mods\SpecialK\SpecialK%lu.dll)",
                              SK_GetDocumentsDir ().c_str (),
 #ifndef _WIN64
                                32
@@ -2666,15 +2671,15 @@ SK_Bypass_CRT (LPVOID user)
 
 
 
-typedef BOOL (WINAPI *GetClientRect_pfn)(
+using GetClientRect_pfn    = BOOL (WINAPI *)(
   _In_  HWND   hWnd,
   _Out_ LPRECT lpRect
 );
-typedef BOOL (WINAPI *GetWindowRect_pfn)(
+using GetWindowRect_pfn    = BOOL (WINAPI *)(
   _In_  HWND   hWnd,
   _Out_ LPRECT lpRect
 );
-typedef int (WINAPI *GetSystemMetrics_pfn)(
+using GetSystemMetrics_pfn = int (WINAPI *)(
   _In_ int nIndex
 );
 
@@ -2698,10 +2703,9 @@ int
   const int never = 0;
         MSG msg;
 
-  while (GetMessage (&msg, 0, 0, 0))
+  while (GetMessage (&msg, nullptr, 0, 0))
   {
     MsgWaitForMultipleObjects (0, nullptr, FALSE, 0, QS_ALLINPUT);
-    continue;
   }
 
   SleepEx (INFINITE, FALSE);
@@ -2770,17 +2774,17 @@ std::pair <std::queue <DWORD>, BOOL>
 __stdcall
 SK_BypassInject (void)
 {
-  SK_CreateDLLHook ( L"user32.dll",
-                      "GetWindowRect",
-                       GetWindowRect_BlockingCallOfDeath,
-             (LPVOID*)&GetWindowRect_DeadEnd,
-             (LPVOID*)&pfnGetWindowRect );
+  SK_CreateDLLHook (       L"user32.dll",
+                            "GetWindowRect",
+                             GetWindowRect_BlockingCallOfDeath,
+    static_cast_p2p <void> (&GetWindowRect_DeadEnd),
+    static_cast_p2p <void> (&pfnGetWindowRect) );
 
-  SK_CreateDLLHook ( L"user32.dll",
-                      "GetClientRect",
-                       GetClientRect_BlockingCallOfDeath,
-             (LPVOID*)&GetClientRect_DeadEnd,
-             (LPVOID*)&pfnGetClientRect  );
+  SK_CreateDLLHook (       L"user32.dll",
+                            "GetClientRect",
+                             GetClientRect_BlockingCallOfDeath,
+    static_cast_p2p <void> (&GetClientRect_DeadEnd),
+    static_cast_p2p <void> (&pfnGetClientRect)  );
 
   //SK_CreateDLLHook ( L"user32.dll",
   //                    "GetSystemMetrics",

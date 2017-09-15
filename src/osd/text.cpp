@@ -18,8 +18,6 @@
  *   If not, see <http://www.gnu.org/licenses/>.
  *
 **/
-#define _CRT_SECURE_NO_WARNINGS
-#define NOMINMAX
 
 #define OSD_IMP
 #include <SpecialK/osd/text.h>
@@ -56,13 +54,13 @@ SK_TextOverlayManager::SK_TextOverlayManager (void)
   SK_ICommandProcessor* cmd =
     SK_GetCommandProcessor ();
 
-  cmd->AddVariable ("OSD.Red",   SK_CreateVar (SK_IVariable::Int, (int *)&config.osd.red));
-  cmd->AddVariable ("OSD.Green", SK_CreateVar (SK_IVariable::Int, (int *)&config.osd.green));
-  cmd->AddVariable ("OSD.Blue",  SK_CreateVar (SK_IVariable::Int, (int *)&config.osd.blue));
+  cmd->AddVariable ("OSD.Red",   SK_CreateVar (SK_IVariable::Int, &config.osd.red));
+  cmd->AddVariable ("OSD.Green", SK_CreateVar (SK_IVariable::Int, &config.osd.green));
+  cmd->AddVariable ("OSD.Blue",  SK_CreateVar (SK_IVariable::Int, &config.osd.blue));
 
-  pos_.x = SK_CreateVar (SK_IVariable::Int,   (int   *)&config.osd.pos_x, this);
-  pos_.y = SK_CreateVar (SK_IVariable::Int,   (int   *)&config.osd.pos_y, this);
-  scale_ = SK_CreateVar (SK_IVariable::Float, (float *)&config.osd.scale, this);
+  pos_.x = SK_CreateVar (SK_IVariable::Int,   &config.osd.pos_x, this);
+  pos_.y = SK_CreateVar (SK_IVariable::Int,   &config.osd.pos_y, this);
+  scale_ = SK_CreateVar (SK_IVariable::Float, &config.osd.scale, this);
 
   cmd->AddVariable ("OSD.PosX",  pos_.x);
   cmd->AddVariable ("OSD.PosY",  pos_.y);
@@ -79,12 +77,13 @@ SK_TextOverlayManager::createTextOverlay (const char *szAppName)
 
   if (overlays_.count (app_name))
   {
-    SK_TextOverlay* overlay = overlays_ [app_name];
+    SK_TextOverlay* overlay =
+      overlays_ [app_name];
 
     return overlay;
   }
 
-  SK_TextOverlay* overlay =
+  auto* overlay =
     new SK_TextOverlay (szAppName);
 
   overlay->setPos   ( static_cast <float> (config.osd.pos_x),
@@ -404,7 +403,7 @@ SK_FormatTemperature (int32_t in_temp, SK_UNITS in_unit, SK_UNITS out_unit)
   else if (in_unit == Fahrenheit && out_unit == Celsius)
   {
     converted = (int32_t)(((float)in_temp - 32.0f) * (5.0f/9.0f));
-    _swprintf (wszOut, L"%#2li°C", converted);\
+    _swprintf (wszOut, L"%#2li°C", converted);
   }
 
   else
@@ -1367,9 +1366,11 @@ SK_SetOSDPos (int x, int y, LPCSTR lpAppName)
   SK_TextOverlay* overlay =
     SK_TextOverlayManager::getInstance ()->getTextOverlay (lpAppName);
 
-  if (overlay != nullptr) {
-    float fX = static_cast <float> (x);
-    float fY = static_cast <float> (y);
+  if (overlay != nullptr)
+  {
+    auto fX = static_cast <float> (x);
+    auto fY = static_cast <float> (y);
+
     overlay->setPos (fX, fY);
   }
 }
@@ -1521,18 +1522,18 @@ strtok_ex (char* str, char* seps)
   return pos;
 }
 
-auto SK_CountLines = [](const char* line)->
- int
-  {
-    int num_lines;
+auto SK_CountLines =
+[](const char* line)
+{
+  int num_lines;
 
-    for ( num_lines = 0;
-            line [num_lines];
-              line [num_lines] == '\n' ?  num_lines++ :
-                                         *line++ );
+  for ( num_lines = 0;
+          line [num_lines];
+            line [num_lines] == '\n' ?  num_lines++ :
+                                       *line++ );
 
-    return num_lines;
-  };
+  return num_lines;
+};
 
 void
 __stdcall
@@ -1567,9 +1568,9 @@ SK_TextOverlay::update (const char* szText)
     float baseline = 0.0f;
     float spacing  = font_.cegui->getLineSpacing () * font_.scale;
 
-    float red   = (float)config.osd.red   / 255.0f;
-    float green = (float)config.osd.green / 255.0f;
-    float blue  = (float)config.osd.blue  / 255.0f;
+    float red   = static_cast <float> (config.osd.red)   / 255.0f;
+    float green = static_cast <float> (config.osd.green) / 255.0f;
+    float blue  = static_cast <float> (config.osd.blue)  / 255.0f;
 
     if (config.osd.red == -1 || config.osd.green == -1 || config.osd.blue == -1)
     {
@@ -1932,13 +1933,13 @@ SK_TextOverlayManager::OnVarChange (SK_IVariable* var, void* val)
   if (var == pos_.x || var == pos_.y || var == scale_)
   {
     if (var == pos_.x)
-      config.osd.pos_x = *(signed int *)val;
+      config.osd.pos_x = *static_cast <signed int *> (val);
 
     else if (var == pos_.y)
-      config.osd.pos_y = *(signed int *)val;
+      config.osd.pos_y = *static_cast <signed int *> (val);
 
     else if (var == scale_)
-      config.osd.scale = *(float *)val;
+      config.osd.scale = *static_cast <float *> (val);
 
 
     SK_AutoCriticalSection auto_crit (&cs_);
@@ -1946,8 +1947,8 @@ SK_TextOverlayManager::OnVarChange (SK_IVariable* var, void* val)
       auto  it =  overlays_.begin ();
     while ( it != overlays_.end   () )
     {
-      float pos_x = (float)config.osd.pos_x;
-      float pos_y = (float)config.osd.pos_y;
+      auto pos_x = static_cast <float> (config.osd.pos_x);
+      auto pos_y = static_cast <float> (config.osd.pos_y);
 
       if (var == pos_.x || var == pos_.y)
         it->second->setPos (pos_x, pos_y);

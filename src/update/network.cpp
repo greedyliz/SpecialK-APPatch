@@ -18,9 +18,6 @@
  *   If not, see <http://www.gnu.org/licenses/>.
  *
 **/
-#define NOMINMAX
-#define _CRT_NON_CONFORMING_SWPRINTFS
-#define _CRT_SECURE_NO_WARNINGS
 
 #include <SpecialK/ini.h>
 #include <SpecialK/parameter.h>
@@ -91,14 +88,14 @@ DWORD
 WINAPI
 DownloadThread (LPVOID user)
 {
-  sk_internet_get_t* get =
+  auto* get =
     static_cast <sk_internet_get_t *> (user);
 
   auto TaskMsg =
     [&get](UINT Msg, WPARAM wParam, LPARAM lParam) ->
       LRESULT
       {
-        if (get->hTaskDlg != 0)
+        if (get->hTaskDlg != nullptr)
           return SendMessage ( get->hTaskDlg,
                                  Msg,
                                    wParam,
@@ -234,8 +231,9 @@ DownloadThread (LPVOID user)
 
       while (hGetFile != INVALID_HANDLE_VALUE && dwSize > 0)
       {
-        DWORD    dwRead = 0;
-        uint8_t *pData  = (uint8_t *)malloc (dwSize);
+        DWORD  dwRead = 0;
+        auto  *pData  =
+          static_cast <uint8_t *> (malloc (dwSize));
 
         if (! pData)
           break;
@@ -309,13 +307,15 @@ END:
   return 0;
 }
 
-HWND hWndUpdateDlg = (HWND)INVALID_HANDLE_VALUE;
-HWND hWndRemind    = 0;
+HWND hWndUpdateDlg =
+  static_cast <HWND> (INVALID_HANDLE_VALUE);
+
+HWND hWndRemind    = nullptr;
 
 #define ID_REMIND 0
 
 struct {
-  HGLOBAL  ref = 0;
+  HGLOBAL  ref = nullptr;
   uint8_t* buf = nullptr;
 } static annoy_sound;
 
@@ -344,7 +344,7 @@ RemindMeLater_DlgProc (
         annoy_sound.ref   =
           LoadResource (SK_GetDLL (), default_sound);
 
-        if (annoy_sound.ref != 0)
+        if (annoy_sound.ref != nullptr)
           annoy_sound.buf = (uint8_t *)LockResource (annoy_sound.ref);
       }
 
@@ -420,7 +420,7 @@ RemindMeLater_DlgProc (
 
         bool empty = false;
 
-        if (! install_ini.get_sections ().size ())
+        if (install_ini.get_sections ().empty ())
           empty = true;
 
         iSK_INISection& user_prefs =
@@ -433,9 +433,10 @@ RemindMeLater_DlgProc (
 
         if (! never)
         {
-          sk::ParameterInt64* remind_time =
-            (sk::ParameterInt64 *)
-              ParameterFactory.create_parameter <int64_t> (L"Reminder");
+          auto* remind_time =
+            dynamic_cast <sk::ParameterInt64 *> (
+              ParameterFactory.create_parameter <int64_t> (L"Reminder")
+            );
 
           remind_time->register_to_ini (
             &install_ini,
@@ -451,11 +452,12 @@ RemindMeLater_DlgProc (
 
         else
         {
-          sk::ParameterStringW* frequency =
-            (sk::ParameterStringW *)
+          auto* frequency =
+            dynamic_cast <sk::ParameterStringW *> (
               ParameterFactory.create_parameter <std::wstring> (
                 L"Frequency"
-              );
+              )
+            );
 
           frequency->register_to_ini (
             &install_ini,
@@ -493,7 +495,7 @@ DownloadDialogCallback (
   _In_ LPARAM   lParam,
   _In_ LONG_PTR dwRefData )
 {
-  sk_internet_get_t* get =
+  auto* get =
     reinterpret_cast <sk_internet_get_t *> (dwRefData);
 
 
@@ -682,8 +684,8 @@ Update_DlgProc (
       std::vector <sk_file_entry_s> files =
         SK_Get7ZFileContents (update_dlg_file);
 
-      wchar_t wszDownloadSize [32],
-              wszBackupSize   [32];
+      wchar_t wszDownloadSize [32] = { },
+              wszBackupSize   [32] = { };
 
       swprintf ( wszDownloadSize, L"   1 File,  %5.2f MiB",
                    (double)fsize / (1024.0 * 1024.0) );
@@ -926,7 +928,9 @@ Update_DlgProc (
           // SUCCESS:
           InterlockedExchange ( &__SK_UpdateStatus, 1 );
           EndDialog           (  hWndUpdateDlg,     0 );
-          hWndUpdateDlg = (HWND)INVALID_HANDLE_VALUE;
+
+          hWndUpdateDlg =
+            static_cast <HWND> (INVALID_HANDLE_VALUE);
         }
 
         else
@@ -934,7 +938,9 @@ Update_DlgProc (
           // FAILURE:
           InterlockedExchange ( &__SK_UpdateStatus, -1 );
           EndDialog           (  hWndUpdateDlg,      0 );
-          hWndUpdateDlg = (HWND)INVALID_HANDLE_VALUE;
+
+          hWndUpdateDlg =
+            static_cast <HWND> (INVALID_HANDLE_VALUE);
         }
       }
 
@@ -943,7 +949,9 @@ Update_DlgProc (
 
     case WM_DESTROY:
     {
-      hWndUpdateDlg = (HWND)INVALID_HANDLE_VALUE;
+      hWndUpdateDlg =
+        static_cast <HWND> (INVALID_HANDLE_VALUE);
+
       return 0;
     }
 
@@ -980,7 +988,7 @@ UpdateDlg_Thread (LPVOID user)
   MSG  msg;
   BOOL bRet;
 
-  while ((bRet = GetMessage (&msg, NULL, 0, 0)) != 0)
+  while ((bRet = GetMessage (&msg, nullptr, 0, 0)) != 0)
   {
     if (bRet == -1)
     {
@@ -1095,7 +1103,7 @@ SK_UpdateSoftware1 (const wchar_t*, bool force)
 
   bool empty = false;
 
-  if (! install_ini.get_sections ().size ())
+  if (install_ini.get_sections ().empty ())
     empty = true;
 
   // Not exactly empty, but certainly not in a working state.
@@ -1162,7 +1170,7 @@ SK_UpdateSoftware1 (const wchar_t*, bool force)
       repo_ini.get_section_f ( L"Archive.%s",
                                  build.latest.package );
 
-    sk_internet_get_t* get =
+    auto* get =
       new sk_internet_get_t { };
 
     URL_COMPONENTSW    urlcomps;
@@ -1208,12 +1216,12 @@ SK_UpdateSoftware1 (const wchar_t*, bool force)
       int nButton = 0;
 
       extern HWND SK_bypass_dialog_hwnd;
-      while (SK_bypass_dialog_hwnd != 0 && IsWindow (SK_bypass_dialog_hwnd))
+      while (SK_bypass_dialog_hwnd != nullptr && IsWindow (SK_bypass_dialog_hwnd))
       {
         MSG  msg;
         BOOL bRet;
 
-        if ((bRet = GetMessage (&msg, 0, 0, 0)) != 0)
+        if ((bRet = GetMessage (&msg, nullptr, 0, 0)) != 0)
         {
           if (bRet == -1)
             break;
@@ -1229,18 +1237,20 @@ SK_UpdateSoftware1 (const wchar_t*, bool force)
         {
           sk::ParameterFactory ParameterFactory;
 
-          sk::ParameterBool* backup_pref =
-            (sk::ParameterBool *)
-              ParameterFactory.create_parameter <bool> (L"BackupFiles");
+          auto* backup_pref =
+            dynamic_cast <sk::ParameterBool *> (
+              ParameterFactory.create_parameter <bool> (L"BackupFiles")
+            );
 
           backup_pref->register_to_ini (
             &install_ini,
               L"Update.User",
                 L"BackupFiles" );
 
-          sk::ParameterBool* keep_pref =
-            (sk::ParameterBool *)
-              ParameterFactory.create_parameter <bool> (L"KeepDownloads");
+          auto* keep_pref =
+            dynamic_cast <sk::ParameterBool *> (
+              ParameterFactory.create_parameter <bool> (L"KeepDownloads")
+            );
 
           keep_pref->register_to_ini (
             &install_ini,

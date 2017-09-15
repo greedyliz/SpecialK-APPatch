@@ -74,14 +74,14 @@ struct sk_config_t
 
 
   struct {
-    bool   show           = true;
+    bool   show           = false;
 
     bool   pump           = false;
     float  pump_interval  = 0.0166666666f;
 
-    DWORD  red            = MAXDWORD32;
-    DWORD  green          = MAXDWORD32;
-    DWORD  blue           = MAXDWORD32;
+    int    red            = MAXDWORD32;
+    int    green          = MAXDWORD32;
+    int    blue           = MAXDWORD32;
     float  scale          =  1.0f;
     int    pos_x          =  0;
     int    pos_y          =  0;
@@ -165,7 +165,7 @@ struct sk_config_t
     struct {
       struct {
         std::string file   = "";
-        float       size   = 13.0f;
+        float       size   = 7.0f;
       } chinese,  cyrillic, default,
         japanese, korean;
     } font;
@@ -211,6 +211,7 @@ struct sk_config_t
     bool    show_playtime        = true;  // In the control panel title
     bool    force_load_steamapi  = false; // Load steam_api{64}.dll even in games
                                           //   that do not use it
+    bool    spoof_BLoggedOn      = false;
   } steam;
 
 
@@ -301,6 +302,11 @@ struct sk_config_t
       bool    ignore_nonmipped  = false;
       bool    allow_staging     = false;
     } cache;
+
+    bool highlight_debug_tex    = false;
+    bool on_demand_dump         = false;
+    bool d3d9_mod               = true;
+    bool dump_on_load           = false;
   } textures;
 
   struct {
@@ -342,11 +348,13 @@ struct sk_config_t
       bool    hook_hid          = true;
       bool    hook_xinput       = true; // Kind of important ;)
       bool    native_ps4        = false;
+      int     predefined_layout = 1;    //0 = PS4, 1 = Steam, 2 = Xbox
 
       struct {
         unsigned
         int   ui_slot           =    0;
-        bool  placehold [4]     = { false };
+        bool  placehold  [4]    = { false };
+        int   assignment [4]    = { 0, 1, 2, 3 };
         bool  disable_rumble    = false;
       } xinput;
     } gamepad;
@@ -549,5 +557,53 @@ struct SK_AppCache_Manager
 protected:
   iSK_INI* app_cache_db = nullptr;
 } extern app_cache_mgr;
+
+
+
+
+
+enum class SK_GAME_ID
+{
+  Tyranny,                      // Tyranny.exe
+  Shadowrun_HongKong,           // SRHK.exe
+  TidesOfNumenera,              // TidesOfNumenera.exe
+  MassEffect_Andromeda,         // MassEffectAndromeda.exe
+  MadMax,                       // MadMax.exe
+  Dreamfall_Chapters,           // Dreamfall Chapters.exe
+  TheWitness,                   // witness_d3d11.exe, witness64_d3d11.exe
+  Obduction,                    // Obduction-Win64-Shipping.exe
+  TheWitcher3,                  // witcher3.exe
+  ResidentEvil7,                // re7.exe
+  DragonsDogma,                 // DDDA.exe
+  EverQuest,                    // eqgame.exe
+  GodEater2RageBurst,           // GE2RB.exe
+  WatchDogs2,                   // WatchDogs2.exe
+  NieRAutomata,                 // NieRAutomata.exe
+  Warframe_x64,                 // Warframe.x64.exe
+  LEGOCityUndercover,           // LEGOLCUR_DX11.exe
+  Sacred,                       // sacred.exe
+  Sacred2,                      // sacred2.exe
+  FinalFantasy9,                // FF9.exe   
+  EdithFinch,                   // FinchGame.exe
+  FinalFantasyX_X2,             // FFX.exe / FFX-2.exe
+  DeadlyPremonition,            // DP.exe DPLauncher.exe
+  GalGun_Double_Peace,          // GG2Game.exe
+  AKIBAs_Trip,                  // AkibaUU.exe
+  YS_Seven,                     // Ys7.exe
+  LifeIsStrange_BeforeTheStorm, // Life is Strange - Before the Storm.exe
+  Tales_of_Symphonia,           // TOS.exe
+  UNKNOWN_GAME               = 0xffff
+};
+
+SK_GAME_ID
+__stdcall
+SK_GetCurrentGameID (void);
+
+const wchar_t*
+__stdcall
+SK_GetNaiveConfigPath (void);
+
+extern const wchar_t*
+SK_GetFullyQualifiedApp (void);
 
 #endif __SK__CONFIG_H__

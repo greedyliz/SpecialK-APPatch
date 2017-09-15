@@ -25,7 +25,6 @@
 #define __D3DX11TEX_H__
 
 #include <SpecialK/dxgi_interfaces.h>
-#include <SpecialK/utility.h>
 
 #include <string>
 #include <d3d11.h>
@@ -320,9 +319,9 @@ typedef HRESULT (WINAPI *D3D12CreateDevice_pfn)(
   _In_      REFIID             riid,
   _Out_opt_ void             **ppDevice);
 
-extern volatile D3D11CreateDevice_pfn             D3D11CreateDevice_Import;
-extern volatile D3D11CreateDeviceAndSwapChain_pfn D3D11CreateDeviceAndSwapChain_Import;
-extern volatile D3D12CreateDevice_pfn             D3D12CreateDevice_Import;
+extern D3D11CreateDevice_pfn             D3D11CreateDevice_Import;
+extern D3D11CreateDeviceAndSwapChain_pfn D3D11CreateDeviceAndSwapChain_Import;
+extern D3D12CreateDevice_pfn             D3D12CreateDevice_Import;
 
   extern          ID3D11Device*         g_pD3D11Dev;
   extern          IUnknown*             g_pD3D12Dev;
@@ -341,6 +340,7 @@ void SK_DXGI_BorderCompensation (UINT& x, UINT& y);
 
 #include <unordered_set>
 #include <unordered_map>
+#include <array>
 #include <set>
 #include <map>
 
@@ -381,9 +381,10 @@ public:
 
   void             refTexture2D ( ID3D11Texture2D      *pTex,
                             const D3D11_TEXTURE2D_DESC *pDesc,
-                                  uint32_t              crc32,
+                                  uint32_t              tag,
                                   size_t                mem_size,
-                                  uint64_t              load_time );
+                                  uint64_t              load_time,
+                                  uint32_t              crc32c );
 
   void             reset         (void);
   bool             purgeTextures (size_t size_to_free, int* pCount, size_t* pFreed);
@@ -393,7 +394,9 @@ public:
     D3D11_TEXTURE2D_DESC  desc       = { };
     size_t                mem_size   = 0L;
     uint64_t              load_time  = 0ULL;
-    uint32_t              crc32      = 0x00;
+    uint32_t              tag        = 0x00;
+    uint32_t              crc32c     = 0x00;
+    bool                  injected   = false;
     uint32_t              hits       = 0;
     uint64_t              last_used  = 0ULL;
   };
@@ -712,7 +715,7 @@ struct SK_TimerQueryD3D11
   UINT64 last_results = { };
 };
 
-struct shader_tracking_s
+struct d3d11_shader_tracking_s
 {
   void clear (void)
   {
@@ -810,19 +813,25 @@ struct shader_tracking_s
 
 struct SK_D3D11_KnownShaders
 {
+  typedef std::unordered_map <uint32_t, std::unordered_set <ID3D11ShaderResourceView *>> conditional_blacklist_t;
 
   template <typename _T> 
   struct ShaderRegistry
   {
-    std::unordered_map <_T*, uint32_t>                 rev;
-    std::unordered_map <uint32_t, SK_D3D11_ShaderDesc> descs;
+    std::unordered_map <_T*, uint32_t>                   rev;
+    std::unordered_map <uint32_t, SK_D3D11_ShaderDesc>   descs;
 
-    std::unordered_set <uint32_t>                      blacklist;
+    std::unordered_set <uint32_t>                        wireframe;
+    std::unordered_set <uint32_t>                        blacklist;
 
-    uint32_t                                           current = 0x0;
-    shader_tracking_s                                  tracked;
+    conditional_blacklist_t                              blacklist_if_texture;
 
-    ULONG                                              changes_last_frame = 0;
+    uint32_t                                             current = 0x0;
+    d3d11_shader_tracking_s                              tracked;
+
+    ULONG                                                changes_last_frame = 0;
+
+    std::array         <ID3D11ShaderResourceView *, 128> current_views;
   };
 
   ShaderRegistry <ID3D11PixelShader>    pixel;
@@ -1006,6 +1015,23 @@ namespace SK
 };
 
 
+void            WaitForInitDXGI             (void);
+
+void  __stdcall SK_D3D11_PreLoadTextures    (void);
+
+void  __stdcall SK_D3D11_TexCacheCheckpoint (void);
+bool  __stdcall SK_D3D11_TextureIsCached    (ID3D11Texture2D*     pTex);
+void  __stdcall SK_D3D11_UseTexture         (ID3D11Texture2D*     pTex);
+void  __stdcall SK_D3D11_RemoveTexFromCache (ID3D11Texture2D*     pTex, bool blacklist = false);
+
+void  __stdcall SK_D3D11_UpdateRenderStats  (IDXGISwapChain*      pSwapChain);
+
+unsigned int
+__stdcall
+HookD3D11 (LPVOID user);
+
+extern volatile DWORD SK_D3D11_init_tid;
+extern volatile DWORD SK_D3D11_ansel_tid;
 
 
 #endif /* __SK__DXGI_BACKEND_H__ */

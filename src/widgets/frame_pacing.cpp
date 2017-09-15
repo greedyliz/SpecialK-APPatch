@@ -40,16 +40,14 @@ public:
   SKWG_FramePacing (void) : SK_Widget ("FramePacing")
   {
     setResizable    (                false).setAutoFit      (true).setMovable (false).
-    setDockingPoint (DockAnchor::SouthEast).setClickThrough (true).setVisible (true);
+    setDockingPoint (DockAnchor::SouthEast).setClickThrough (true).setVisible (false);//setVisible (true);
 
     SK_ImGui_Widgets.frame_pacing = this;
   };
 
-  void run (void)
+  virtual void run (void) override
   {
-    ImGuiIO& io (ImGui::GetIO ());
-
-    const  float font_size           =             ImGui::GetFont  ()->FontSize                        * io.FontGlobalScale;
+    const  float font_size           =             ImGui::GetFont  ()->FontSize                        ;//* scale;
     const  float font_size_multiline = font_size + ImGui::GetStyle ().ItemSpacing.y + ImGui::GetStyle ().ItemInnerSpacing.y;
 
     ImVec2 new_size (font_size * 35, font_size_multiline * (has_battery ? 6.5f : 5.44f));
@@ -59,15 +57,15 @@ public:
       ImGui::SetNextWindowSize (new_size, ImGuiSetCond_Always);
   }
 
-  void draw (void)
+  virtual void draw (void) override
   {
+    ImGuiIO& io (ImGui::GetIO ());
+
     static bool move = true;
     
     if (move)
     {
-      ImGuiIO& io (ImGui::GetIO ());
-
-      const  float font_size           =             ImGui::GetFont  ()->FontSize                        * io.FontGlobalScale;
+      const  float font_size           =             ImGui::GetFont  ()->FontSize                        ;//* scale;
       const  float font_size_multiline = font_size + ImGui::GetStyle ().ItemSpacing.y + ImGui::GetStyle ().ItemInnerSpacing.y;
 
       ImGui::SetWindowPos (ImVec2 (io.DisplaySize.x - getSize ().x, io.DisplaySize.y - getSize ().y ));
@@ -79,7 +77,7 @@ public:
     has_battery = SK_ImGui::BatteryMeter ();
   }
 
-  void OnConfig (ConfigEvent event)
+  virtual void OnConfig (ConfigEvent event) override
   {
     switch (event)
     {

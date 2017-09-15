@@ -18,7 +18,6 @@
  *   If not, see <http://www.gnu.org/licenses/>.
  *
 **/
-#define _CRT_SECURE_NO_WARNINGS
 
 #include <SpecialK/console.h>
 #include <SpecialK/hooks.h>
@@ -148,10 +147,7 @@ SK_Console::End (void)
   if (hModPPrinny)
   {
     bNoConsole = true;
-    return;
   }
-
-  return;
 }
 
 void
@@ -268,10 +264,8 @@ SK_HandleConsoleKey (bool keyDown, BYTE vkCode, LPARAM lParam)
     //bool   keyDown  = ! (lParam & 0x80000000UL);
 
 
-    extern bool SK_ImGui_Visible;
-
     // Disable the command console if the ImGui overlay is visible
-    if (SK_ImGui_Visible)
+    if (SK_ImGui_Active ())
       visible = false;
 
 
@@ -330,7 +324,7 @@ SK_HandleConsoleKey (bool keyDown, BYTE vkCode, LPARAM lParam)
       else if (commands.idx >= commands.history.size ())
         commands.idx = commands.history.size () - 1;
 
-      if (commands.history.size ())
+      if (! commands.history.empty ())
       {
         strcpy (&text [1], commands.history [commands.idx].c_str ());
         command_issued = false;
@@ -358,13 +352,14 @@ SK_HandleConsoleKey (bool keyDown, BYTE vkCode, LPARAM lParam)
           if (result.getStatus ())
           {
             // Don't repeat the same command over and over
-            if (commands.history.size () == 0 ||
+            if (commands.history.empty() ||
                 commands.history.back () != &text [1])
             {
-              commands.history.push_back (&text [1]);
+              commands.history.emplace_back (&text [1]);
             }
 
-            commands.idx = commands.history.size ();
+            commands.idx =
+              commands.history.size ();
 
             text [1] = '\0';
 

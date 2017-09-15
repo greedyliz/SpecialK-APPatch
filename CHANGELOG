@@ -1,3 +1,107 @@
+0.8.42
+
+ + Last update prior to hurricane Irma
+ + Improved D3D9 texture injection performance
+
+
+0.8.41
+ 
+ + Improved support for D3D9 texture modding, and made it an opt-in thing since it's still
+     experimental.
+ + Added File | Exit to the control panel
+
+
+0.8.40
+
+ + Added somewhat functional texture modding support to D3D9
+  >> Will finish at a later date
+ + Added XInput Controller Slot Reassignment (refer to INI file -- default is 0,1,2,3)
+
+
+0.8.39
+
+ + Fixed D3D9Ex D3DPRESENT_DONOTWAIT support in Lightning Returns: FFXIII
+ + Integrated UI memory management fixes for FFXIII
+ + Improved thread-safety in D3D9 shader mod tools
+ + Added scaling option to widgets (needs a ton of work)
+ + Added clothing preferences to Gal*Gun: Double Peace
+
+
+0.8.38
+
+ + Integrates about 33 - 50% of Tales of Berseria Fix's shader modding functionality
+ + Fixes SteamAPI problems in older games
+
+
+0.8.37
+
+ + Preliminary support for a native Steam Controller input backend
+  >> Does not utilize any of the special features, merely blocks native SteamAPI input
+       while the config UI is open
+  >> Generally for the 1% of games that use native Steam, this requires Special K to be
+       installed as a local wrapper because it needs to catch SteamAPI initialization early.
+
+
+0.8.36
+
+ + Performance-tuned memory pattern scanner to offer alignment and address above/below
+     search heuristics.
+
+   >> Significantly speeds up repeating pattern searches (i.e. hard-coded resolutions)
+    
+ + Added Resolution Override to Gal Gun and Akiba's Trip
+
+  >> This is different from the way this feature normally works, it goes beyond API
+       reflection/introspection and instead patches certain hardcoded arrays of memory
+         in really crappy JRPG ports.
+
+ + Added D3D11 Wireframe Mode (per-shader)
+ + Added additional D3D11 Shader Culling options (per-Shader Resource View)
+ + Added support for BC7 and BC6H textures to Final Fantasy X/X-2
+ + Fixed Shader Resource View formats for injected D3D11 textures using alternate formats
+ + Fixed Global Injection Blacklist issues
+ + Turned off all widgets by default for new installs
+
+
+0.8.35
+
+ + Added option to flip textures in D3D11 Live Texture View
+ + Added indicator for injected textures to D3D11 Live Texture View
+ + Corrected texture hashes listed in D3D11 Live Texture View
+ + ReShade can now be opened independently of Special K's config menu
+ + Fixed ReShade draw order in OpenGL games
+
+
+0.8.34.1
+
+ + Fixed SteamAPI problem in Dark Souls III
+ + Added Browse ReShade Assets to File Menu
+ + Improved ReShade stats screen
+ + Improved controller support in ReShade's UI
+ + ReShade game presets are now stored in Profiles\<appname>\ReShade\<executable.ini>
+
+0.8.34
+
+ + Framerate limiter defaults to busy-wait again
+  * The customization you do to the non-busy-wait method (under Advanced) are not saved
+      when you exit a game.
+
+ Added Support for Custom ReShade
+ ================================
+  + This release comes bundled with a test version of unofficial ReShade 3.0.666 ;)
+  + The custom version goes in PlugIns/Unofficial, and you should place the official
+      release (if you want/need it) into PlugIns/ThirdParty
+  + Only the global injector version of Special K supports custom ReShade, you can
+      select between official / custom under the PlugIns menu
+
+   >> The custom version includes:
+    * Gamepad / keyboard support on config menu
+    * Per-game presets, textures and shaders
+     + Place Textures in Documents/My Mods/SpecialK/Profiles/<App Name>/ReShade/Textures
+     + Place Shaders in Documents/My Mods/SpecialK/Profiles/<App Name>/ReShade/Shaders
+    * Always loads a game's preset on start, instead of the last used preset
+
+
 0.8.33
 
  + Fixed low-resolution issues with the EULA window

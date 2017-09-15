@@ -19,7 +19,6 @@
  *
 **/
 
-#define _CRT_SECURE_NO_WARNINGS
 #define WIN32_LEAN_AND_MEAN
 #define NOGDI
 
@@ -46,6 +45,12 @@ extern HMODULE WINAPI SK_GetDLL (void);
 #include <SpecialK/config.h>
 
 #include <imgui/backends/imgui_gl3.h>
+
+
+//SK_OpenGL_KnownPrograms SK_GL_Programs;
+//SK_OpenGL_KnownTextures SK_GL_Textures;
+//SK_OpenGL_KnownBuffers  SK_GL_Buffers;
+
 
 volatile ULONG __gl_ready = FALSE;
 
@@ -80,11 +85,6 @@ ULONG GL_HOOKS  = 0UL;
 void
 WINAPI
 SK_HookGL (void);
-
-extern
-ULONG
-__stdcall
-SK_GetFramesDrawn (void);
 
 extern DWORD SK_ImGui_DrawFrame (DWORD dwFlags, void* user);
 
@@ -135,8 +135,9 @@ void ResetCEGUI_GL (void)
   if (cegGL == nullptr)
   {
     try {
-      cegGL = (CEGUI::OpenGL3Renderer *)
-        &CEGUI::OpenGL3Renderer::bootstrapSystem ();
+      cegGL = reinterpret_cast <CEGUI::OpenGL3Renderer *> (
+        &CEGUI::OpenGL3Renderer::bootstrapSystem ()
+      );
 
       cegGL->enableExtraStateSettings (true);
 
@@ -1221,8 +1222,8 @@ SK_CEGUI_DrawGL (void)
     {
       CEGUI::System::getDllSingleton ().getRenderer ()->setDisplaySize (
           CEGUI::Sizef (
-            (float)(rect_now.right - rect_now.left),
-              (float)(rect_now.bottom - rect_now.top)
+            static_cast <float> (rect_now.right - rect_now.left),
+              static_cast <float> (rect_now.bottom - rect_now.top)
           )
       );
 
@@ -1317,17 +1318,21 @@ SwapBuffers (HDC hDC)
   SK_GetCurrentRenderBackend ().api = SK_RenderAPI::OpenGL;
   SK_BeginBufferSwap ();
 
-  if (gdi_swap_buffers == nullptr) {
+  if (gdi_swap_buffers == nullptr)
+  {
     HMODULE hModGDI32 = LoadLibraryW_Original (L"gdi32.dll");
 
     gdi_swap_buffers =
-      (SwapBuffers_pfn)GetProcAddress (hModGDI32, "SwapBuffers");
+      reinterpret_cast <SwapBuffers_pfn> (
+        GetProcAddress (hModGDI32, "SwapBuffers")
+      );
   }
 
 
   if (SK_GetCurrentGLContext ())
   {
-    if (SK_GetFramesDrawn () < 1) {
+    if (SK_GetFramesDrawn () < 1)
+    {
       glewExperimental = GL_TRUE;
       glewInit ();
     }
@@ -1336,7 +1341,8 @@ SwapBuffers (HDC hDC)
     SK_CEGUI_DrawGL         ();
 
     static bool first = true;
-    if (first) {
+    if (first)
+    {
       ImGui_ImplGL3_Init ();
       first = false;
     }
@@ -1520,6 +1526,7 @@ namespace GLPerf
       ready_     = GL_TRUE;
 
       target_    = target;
+      active_    = GL_FALSE;
     }
 
    ~PipelineQuery (GLvoid)
@@ -1731,7 +1738,11 @@ SK_GL_UpdateRenderStats (void)
     {
       if (GLPerf::pipeline_states [i]->isReady ())
       {
-        GLPerf::pipeline_states [i]->beginQuery ();
+        GLuint64 result;
+        if (GLPerf::pipeline_states [i]->getResulIfFinished (&result))
+        {
+          GLPerf::pipeline_states [i]->beginQuery ();
+        }
       }
 
       else if (GLPerf::pipeline_states [i]->isActive ())
@@ -1739,11 +1750,10 @@ SK_GL_UpdateRenderStats (void)
         GLPerf::pipeline_states [i]->endQuery ();
       }
 
-      if (! GLPerf::pipeline_states [i]->isActive ())
-      {
-        GLuint64 result;
-        GLPerf::pipeline_states [i]->getResulIfFinished (&result);
-      }
+      //if (! GLPerf::pipeline_states [i]->isActive ())
+      //{
+      //
+      //}
     }
   }
 }
@@ -1837,8 +1847,8 @@ SK::OpenGL::getPipelineStatsDesc (void)
     _swprintf ( wszDesc,
                   L"%s  RASTER : %5.1f%% Filled     (%s Triangles IN )\n",
                     wszDesc, 100.0f *
-                        ( (float)stats.CPrimitives /
-                          (float)stats.CInvocations ),
+                        ( static_cast <float> (stats.CPrimitives) /
+                          static_cast <float> (stats.CInvocations) ),
                       SK_CountToString (stats.CInvocations).c_str () );
   }
 
@@ -1892,7 +1902,7 @@ SK::OpenGL::getPipelineStatsDesc (void)
   SK_CreateDLLHook2 ( Backend,                             \
                      #Func,                                \
                       Func,                                \
-reinterpret_cast <LPVOID *> (&imp_ ## Func) ); ++GL_HOOKS;
+    static_cast_p2p <void> (&imp_ ## Func) ); ++GL_HOOKS;
 
 #define SK_GL_HOOK(Func) SK_DLL_HOOK(wszBackendDLL,Func)
 
@@ -1920,16 +1930,23 @@ SK_HookGL (void)
     {
       wchar_t* wszBackendDLL = L"OpenGL32.dll";
 
-#if 0
-      SK_CreateDLLHook (      wszBackendDLL,
-                             "wglSwapBuffers",
-                              wglSwapBuffers,
-reinterpret_cast <LPVOID *> (&wgl_swap_buffers) );
+#if 1
+      SK_CreateDLLHook (         wszBackendDLL,
+                                "wglSwapBuffers",
+                                 wglSwapBuffers,
+        static_cast_p2p <void> (&wgl_swap_buffers) );
 #else
-      SK_CreateDLLHook2 (       L"gdi32.dll",
-                                 "SwapBuffers",
-                                  SwapBuffers,
-reinterpret_cast <LPVOID *> (&gdi_swap_buffers) );
+      SK_CreateDLLHook (       L"gdi32.dll",
+                                "SwapBuffers",
+                                 SwapBuffers,
+        static_cast_p2p <void> (&gdi_swap_buffers) );
+#endif
+
+// Load user-defined DLLs (Plug-In)
+#ifdef _WIN64
+    SK_LoadPlugIns64 ();
+#else
+    SK_LoadPlugIns32 ();
 #endif
 
       ++GL_HOOKS;
@@ -2301,13 +2318,6 @@ reinterpret_cast <LPVOID *> (&gdi_swap_buffers) );
 
     dll_log.Log ( L"[ OpenGL32 ]  @ %lu functions hooked",
                     GL_HOOKS );
-
-// Load user-defined DLLs (Plug-In)
-#ifdef _WIN64
-    SK_LoadPlugIns64 ();
-#else
-    SK_LoadPlugIns32 ();
-#endif
   }
 
   InterlockedExchange (&__gl_ready, TRUE);

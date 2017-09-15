@@ -19,9 +19,6 @@
  *
 **/
 
-#define _CRT_SECURE_NO_WARNINGS
-#define _CRT_NON_CONFORMING_SWPRINTFS
-
 #include <Windows.h>
 
 #include <SpecialK/hooks.h>
@@ -56,9 +53,9 @@ protected:
     } vftbl;
 
     struct {
-      HANDLE       module   = 0; // Hold a reference; don't let
-                                 //   software unload the DLL while it is
-                                 //     hooked!
+      HANDLE       module   = nullptr; // Hold a reference; don't let
+                                       //   software unload the DLL while it is
+                                       //     hooked!
     } dll;
   };
 
@@ -78,15 +75,15 @@ std::vector <SK_HookedFunction> hooks;
 };
 
 MH_STATUS
-WINAPI
-SK_EnableHookEx (LPVOID pTarget, UINT idx);
+__stdcall
+SK_EnableHookEx (void *pTarget, UINT idx);
 
 MH_STATUS
-WINAPI
-SK_CreateFuncHook ( LPCWSTR pwszFuncName,
-                    LPVOID  pTarget,
-                    LPVOID  pDetour,
-                    LPVOID *ppOriginal )
+__stdcall
+SK_CreateFuncHook ( const wchar_t  *pwszFuncName,
+                          void     *pTarget,
+                          void     *pDetour,
+                          void    **ppOriginal )
 {
   MH_STATUS status =
     MH_CreateHook ( pTarget,
@@ -122,12 +119,12 @@ SK_CreateFuncHook ( LPCWSTR pwszFuncName,
 }
 
 MH_STATUS
-WINAPI
-SK_CreateFuncHookEx ( LPCWSTR pwszFuncName,
-                      LPVOID  pTarget,
-                      LPVOID  pDetour,
-                      LPVOID *ppOriginal,
-                      UINT    idx )
+__stdcall
+SK_CreateFuncHookEx ( const wchar_t *pwszFuncName,
+                            void    *pTarget,
+                            void    *pDetour,
+                            void   **ppOriginal,
+                            UINT     idx )
 {
   MH_STATUS status =
     MH_CreateHookEx ( pTarget,
@@ -165,10 +162,10 @@ SK_CreateFuncHookEx ( LPCWSTR pwszFuncName,
 }
 
 MH_STATUS
-WINAPI
-SK_CreateDLLHook ( LPCWSTR pwszModule, LPCSTR  pszProcName,
-                   LPVOID  pDetour,    LPVOID *ppOriginal,
-                   LPVOID *ppFuncAddr )
+__stdcall
+SK_CreateDLLHook ( const wchar_t  *pwszModule, const char  *pszProcName,
+                         void     *pDetour,          void **ppOriginal,
+                         void    **ppFuncAddr )
 {
   HMODULE hMod = nullptr;
 
@@ -185,10 +182,10 @@ SK_CreateDLLHook ( LPCWSTR pwszModule, LPCSTR  pszProcName,
       GetModuleHandleExW (GET_MODULE_HANDLE_EX_FLAG_PIN, pwszModule, &hMod);
   }
 
-  LPVOID    pFuncAddr = nullptr;
-  MH_STATUS status    = MH_OK;
+  void      *pFuncAddr = nullptr;
+  MH_STATUS  status    = MH_OK;
 
-  if (hMod == 0)
+  if (hMod == nullptr)
     status = MH_ERROR_MODULE_NOT_FOUND;
 
   else
@@ -257,10 +254,10 @@ SK_CreateDLLHook ( LPCWSTR pwszModule, LPCSTR  pszProcName,
 }
 
 MH_STATUS
-WINAPI
-SK_CreateDLLHook2 ( LPCWSTR pwszModule, LPCSTR  pszProcName,
-                    LPVOID  pDetour,    LPVOID *ppOriginal,
-                    LPVOID *ppFuncAddr )
+__stdcall
+SK_CreateDLLHook2 ( const wchar_t  *pwszModule, const char  *pszProcName,
+                          void     *pDetour,          void **ppOriginal,
+                          void    **ppFuncAddr )
 {
   HMODULE hMod = nullptr;
 
@@ -275,10 +272,10 @@ SK_CreateDLLHook2 ( LPCWSTR pwszModule, LPCSTR  pszProcName,
       GetModuleHandleExW (GET_MODULE_HANDLE_EX_FLAG_PIN, pwszModule, &hMod);
   }
 
-  LPVOID    pFuncAddr = nullptr;
-  MH_STATUS status    = MH_OK;
+  void      *pFuncAddr = nullptr;
+  MH_STATUS  status    = MH_OK;
 
-  if (hMod == 0)
+  if (hMod == nullptr)
     status = MH_ERROR_MODULE_NOT_FOUND;
 
   else
@@ -350,10 +347,10 @@ SK_CreateDLLHook2 ( LPCWSTR pwszModule, LPCSTR  pszProcName,
 }
 
 MH_STATUS
-WINAPI
-SK_CreateDLLHook3 ( LPCWSTR pwszModule, LPCSTR  pszProcName,
-                    LPVOID  pDetour,    LPVOID *ppOriginal,
-                    LPVOID *ppFuncAddr )
+__stdcall
+SK_CreateDLLHook3 ( const wchar_t  *pwszModule, const char  *pszProcName,
+                          void     *pDetour,          void **ppOriginal,
+                          void    **ppFuncAddr )
 {
   HMODULE hMod = nullptr;
 
@@ -368,10 +365,10 @@ SK_CreateDLLHook3 ( LPCWSTR pwszModule, LPCSTR  pszProcName,
       GetModuleHandleExW (GET_MODULE_HANDLE_EX_FLAG_PIN, pwszModule, &hMod);
   }
 
-  LPVOID    pFuncAddr = nullptr;
-  MH_STATUS status    = MH_OK;
+  void      *pFuncAddr = nullptr;
+  MH_STATUS  status    = MH_OK;
 
-  if (hMod == 0)
+  if (hMod == nullptr)
     status = MH_ERROR_MODULE_NOT_FOUND;
 
   else {
@@ -390,7 +387,8 @@ SK_CreateDLLHook3 ( LPCWSTR pwszModule, LPCSTR  pszProcName,
     if (status == MH_ERROR_ALREADY_CREATED && ppOriginal != nullptr)
     {
       if (ppFuncAddr != nullptr)
-        *ppFuncAddr = pFuncAddr;
+         *ppFuncAddr  = pFuncAddr;
+
       return MH_OK;
     }
 
@@ -431,12 +429,12 @@ SK_CreateDLLHook3 ( LPCWSTR pwszModule, LPCSTR  pszProcName,
 }
 
 MH_STATUS
-WINAPI
-SK_CreateVFTableHook ( LPCWSTR pwszFuncName,
-                       LPVOID *ppVFTable,
-                       DWORD   dwOffset,
-                       LPVOID  pDetour,
-                       LPVOID *ppOriginal )
+__stdcall
+SK_CreateVFTableHook ( const wchar_t  *pwszFuncName,
+                             void    **ppVFTable,
+                             DWORD     dwOffset,
+                             void     *pDetour,
+                             void    **ppOriginal )
 {
   MH_STATUS ret =
     SK_CreateFuncHook (
@@ -459,13 +457,13 @@ SK_CreateVFTableHook ( LPCWSTR pwszFuncName,
 }
 
 MH_STATUS
-WINAPI
-SK_CreateVFTableHookEx ( LPCWSTR pwszFuncName,
-                         LPVOID *ppVFTable,
-                         DWORD   dwOffset,
-                         LPVOID  pDetour,
-                         LPVOID *ppOriginal, 
-                         UINT    idx )
+__stdcall
+SK_CreateVFTableHookEx ( const wchar_t  *pwszFuncName,
+                               void    **ppVFTable,
+                               DWORD     dwOffset,
+                               void     *pDetour,
+                               void    **ppOriginal, 
+                               UINT      idx )
 {
   MH_STATUS ret =
     SK_CreateFuncHookEx (
@@ -482,12 +480,12 @@ SK_CreateVFTableHookEx ( LPCWSTR pwszFuncName,
 }
 
 MH_STATUS
-WINAPI
-SK_CreateVFTableHook2 ( LPCWSTR pwszFuncName,
-                        LPVOID *ppVFTable,
-                        DWORD   dwOffset,
-                        LPVOID  pDetour,
-                        LPVOID *ppOriginal )
+__stdcall
+SK_CreateVFTableHook2 ( const wchar_t  *pwszFuncName,
+                              void    **ppVFTable,
+                              DWORD     dwOffset,
+                              void     *pDetour,
+                              void    **ppOriginal )
 {
   MH_STATUS ret =
     SK_CreateFuncHook (
@@ -511,7 +509,7 @@ SK_CreateVFTableHook2 ( LPCWSTR pwszFuncName,
 }
 
 MH_STATUS
-WINAPI
+__stdcall
 SK_ApplyQueuedHooks (void)
 {
   MH_STATUS status =
@@ -528,8 +526,8 @@ SK_ApplyQueuedHooks (void)
 }
 
 MH_STATUS
-WINAPI
-SK_EnableHook (LPVOID pTarget)
+__stdcall
+SK_EnableHook (void *pTarget)
 {
   MH_STATUS status =
     MH_EnableHook (pTarget);
@@ -556,8 +554,8 @@ SK_EnableHook (LPVOID pTarget)
 }
 
 MH_STATUS
-WINAPI
-SK_EnableHookEx (LPVOID pTarget, UINT idx)
+__stdcall
+SK_EnableHookEx (void *pTarget, UINT idx)
 {
   MH_STATUS status =
     MH_EnableHookEx (pTarget, idx);
@@ -586,8 +584,8 @@ SK_EnableHookEx (LPVOID pTarget, UINT idx)
 }
 
 MH_STATUS
-WINAPI
-SK_DisableHook (LPVOID pTarget)
+__stdcall
+SK_DisableHook (void *pTarget)
 {
   MH_STATUS status =
     MH_DisableHook (pTarget);
@@ -614,8 +612,8 @@ SK_DisableHook (LPVOID pTarget)
 }
 
 MH_STATUS
-WINAPI
-SK_RemoveHook (LPVOID pTarget)
+__stdcall
+SK_RemoveHook (void *pTarget)
 {
   MH_STATUS status =
     MH_RemoveHook (pTarget);
@@ -632,7 +630,7 @@ SK_RemoveHook (LPVOID pTarget)
 }
 
 MH_STATUS
-WINAPI
+__stdcall
 SK_Init_MinHook (void)
 {
   MH_STATUS status;
@@ -650,7 +648,7 @@ SK_Init_MinHook (void)
 }
 
 MH_STATUS
-WINAPI
+__stdcall
 SK_UnInit_MinHook (void)
 {
   MH_STATUS status;

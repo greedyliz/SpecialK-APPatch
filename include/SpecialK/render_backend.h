@@ -23,7 +23,9 @@
 #define __SK__RENDER_BACKEND_H__
 
 #include <Windows.h>
-#include <nvapi.h>
+#include <../depends/include/nvapi/nvapi_lite_common.h>
+
+#include <cstdint>
 
 extern HGLRC WINAPI SK_GetCurrentGLContext (void);
 
@@ -89,7 +91,7 @@ public:
 
   IUnknown*               device               = nullptr;
   IUnknown*               swapchain            = nullptr;
-  NVDX_ObjectHandle       surface              = 0;
+  NVDX_ObjectHandle       surface              = nullptr;
   bool                    fullscreen_exclusive = false;
   uint64_t                framebuffer_flags    = 0x00;
 
@@ -132,7 +134,7 @@ public:
   void releaseOwnedResources (void);
 };
 
-typedef SK_RenderBackend_V2 SK_RenderBackend;
+using SK_RenderBackend = SK_RenderBackend_V2;
 
 SK_RenderBackend&
 __stdcall
@@ -141,6 +143,12 @@ SK_GetCurrentRenderBackend (void);
 void
 __stdcall
 SK_InitRenderBackends (void);
+
+__declspec (dllexport)
+IUnknown* __stdcall SK_Render_GetDevice (void);
+
+__declspec (dllexport)
+IUnknown* __stdcall SK_Render_GetSwapChain (void);
 
 void SK_BootD3D8   (void);
 void SK_BootDDraw  (void);

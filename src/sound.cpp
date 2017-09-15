@@ -19,8 +19,6 @@
  *
 **/
 
-#define _CRT_SECURE_NO_WARNINGS
-
 #include <Mmdeviceapi.h>
 #include <audiopolicy.h>
 #include <endpointvolume.h>
@@ -147,7 +145,7 @@ if (SUCCEEDED (pSessionCtl2->GetState (&state)) && state == AudioSessionStateAct
     {
       if ( unique_procs.count (dwProcess) == 0 && ( max_count == 0 || *count < max_count ) )
       {
-        if ((pass == 1 || SK_FindRootWindow (dwProcess).root != 0) || dwProcess == 0)
+        if ((pass == 1 || SK_FindRootWindow (dwProcess).root != nullptr) || dwProcess == 0)
         {
           if (procs != nullptr)
             procs [unique_procs.size ()] = dwProcess;
@@ -302,7 +300,7 @@ SK_WASAPI_GetChannelName (int channel_idx)
   {
     DWORD dwConfig = 0x00;
 
-    typedef HRESULT (WINAPI *DirectSoundCreate_pfn)(
+    using DirectSoundCreate_pfn = HRESULT (WINAPI *)(
       LPGUID         lpGuid, 
       LPDIRECTSOUND* ppDS, 
       LPUNKNOWN      pUnkOuter 
@@ -313,10 +311,11 @@ SK_WASAPI_GetChannelName (int channel_idx)
 
     if (hModDSound != nullptr)
     {
-      DirectSoundCreate_pfn DirectSoundCreate_Import =
-        (DirectSoundCreate_pfn)
+      auto DirectSoundCreate_Import =
+        reinterpret_cast <DirectSoundCreate_pfn> (
           GetProcAddress ( hModDSound,
-                             "DirectSoundCreate" );
+                             "DirectSoundCreate" )
+        );
 
       if (DirectSoundCreate_Import != nullptr)
       {

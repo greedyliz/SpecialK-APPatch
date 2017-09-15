@@ -18,7 +18,6 @@
  *   If not, see <http://www.gnu.org/licenses/>.
  *
 **/
-#define _CRT_SECURE_NO_WARNINGS
 
 #include <Windows.h>
 
@@ -38,7 +37,7 @@
 
 // Dispatch through the trampoline, rather than hook
 //
-typedef HRESULT (STDMETHODCALLTYPE *WaitForVBlank_pfn)(
+using WaitForVBlank_pfn = HRESULT (STDMETHODCALLTYPE *)(
   IDXGIOutput *This
 );
 extern WaitForVBlank_pfn WaitForVBlank_Original;
@@ -71,7 +70,7 @@ auto SK_DeltaPerf =
    };
 
 LARGE_INTEGER
-SK_QueryPerf (void)
+SK_QueryPerf ()
 {
   return SK_CurrentPerf ();
 }
@@ -90,6 +89,15 @@ Sleep_Detour (DWORD dwMilliseconds)
   //       Steam first!
   if (SK_GetFramesDrawn () < 30)
     return Sleep_Original (dwMilliseconds);
+
+#ifndef _WIN64
+  if (SK_GetCallingDLL () == GetModuleHandle (L"steam_api.dll"))
+    return Sleep_Original (dwMilliseconds);
+#else
+  if (SK_GetCallingDLL () == GetModuleHandle (L"steam_api64.dll"))
+    return Sleep_Original (dwMilliseconds);
+#endif
+
 
   BOOL bGUIThread    = IsGUIThread (FALSE);
   BOOL bRenderThread = (SK_GetCurrentRenderBackend ().thread == GetCurrentThreadId ());
@@ -121,6 +129,14 @@ Sleep_Detour (DWORD dwMilliseconds)
 
   if (bGUIThread)
   {
+    static bool ffx = GetModuleHandle (L"UnX.dll") != nullptr;
+
+    if (ffx && dwMilliseconds == 5)
+    {
+      MsgWaitForMultipleObjects (0, nullptr, FALSE, 0, QS_ALLEVENTS);
+      return;
+    }
+
     if (config.render.framerate.sleepless_window && dwMilliseconds != INFINITE)
     {
       static bool reported = false;
@@ -135,7 +151,7 @@ Sleep_Detour (DWORD dwMilliseconds)
       if (bRenderThread)
         SK::Framerate::events.getMessagePumpStats ().wake (dwMilliseconds);
 
-      MsgWaitForMultipleObjects (0, nullptr, FALSE, dwMilliseconds, QS_ALLINPUT);
+      MsgWaitForMultipleObjects (0, nullptr, FALSE, dwMilliseconds, QS_ALLEVENTS);
 
       return;
     }
@@ -163,7 +179,7 @@ Sleep_Detour (DWORD dwMilliseconds)
       //return YieldProcessor ();
 #endif
 
-    SleepEx (dwMilliseconds, TRUE);
+    Sleep_Original (dwMilliseconds);
 #ifdef DUAL_USE_MAX_DELTA
   }
 #endif
@@ -178,23 +194,23 @@ QueryPerformanceCounter_Detour (_Out_ LARGE_INTEGER *lpPerformanceCount)
   return QueryPerformanceCounter_Original (lpPerformanceCount);
 }
 
-typedef _Return_type_success_(return >= 0) LONG NTSTATUS;
+using NTSTATUS = _Return_type_success_(return >= 0) LONG;
 
-typedef NTSTATUS (NTAPI *NtQueryTimerResolution_pfn)
+using NtQueryTimerResolution_pfn = NTSTATUS (NTAPI *)
 (
   OUT PULONG              MinimumResolution,
   OUT PULONG              MaximumResolution,
   OUT PULONG              CurrentResolution
 );
 
-typedef NTSTATUS (NTAPI *NtSetTimerResolution_pfn)
+using NtSetTimerResolution_pfn = NTSTATUS (NTAPI *)
 (
   IN  ULONG               DesiredResolution,
   IN  BOOLEAN             SetResolution,
   OUT PULONG              CurrentResolution
 );
 
-HMODULE                    NtDll                  = 0;
+HMODULE                    NtDll                  = nullptr;
 
 NtQueryTimerResolution_pfn NtQueryTimerResolution = nullptr;
 NtSetTimerResolution_pfn   NtSetTimerResolution   = nullptr;
@@ -227,38 +243,43 @@ SK::Framerate::Init (void)
 
 #define NO_HOOK_QPC
 #ifndef NO_HOOK_QPC
-  SK_CreateDLLHook2 ( L"kernel32.dll", "QueryPerformanceCounter",
-                     QueryPerformanceCounter_Detour,
-          (LPVOID *)&QueryPerformanceCounter_Original,
-          (LPVOID *)&pfnQueryPerformanceCounter );
+  SK_CreateDLLHook2 (      L"kernel32.dll",
+                            "QueryPerformanceCounter",
+                             QueryPerformanceCounter_Detour,
+    static_cast_p2p <void> (&QueryPerformanceCounter_Original),
+    static_cast_p2p <void> (&pfnQueryPerformanceCounter) );
 #endif
 
   if (! GetModuleHandle (L"PrettyPrinny.dll"))
   {
-    SK_CreateDLLHook2 ( L"kernel32.dll", "Sleep",
-                       Sleep_Detour,
-            (LPVOID *)&Sleep_Original,
-            (LPVOID *)&pfnSleep );
+    SK_CreateDLLHook2 (      L"kernel32.dll",
+                              "Sleep",
+                               Sleep_Detour,
+      static_cast_p2p <void> (&Sleep_Original),
+      static_cast_p2p <void> (&pfnSleep) );
   }
 
 #ifdef NO_HOOK_QPC
     QueryPerformanceCounter_Original =
-      (QueryPerformanceCounter_pfn)
+      reinterpret_cast <QueryPerformanceCounter_pfn> (
         GetProcAddress ( GetModuleHandle (L"kernel32.dll"),
-                           "QueryPerformanceCounter" );
+                           "QueryPerformanceCounter" )
+      );
 #endif
 
-  if (NtDll == 0)
+  if (NtDll == nullptr)
   {
     NtDll = LoadLibrary (L"ntdll.dll");
 
     NtQueryTimerResolution =
-      (NtQueryTimerResolution_pfn)
-        GetProcAddress (NtDll, "NtQueryTimerResolution");
+      reinterpret_cast <NtQueryTimerResolution_pfn> (
+        GetProcAddress (NtDll, "NtQueryTimerResolution")
+      );
 
     NtSetTimerResolution =
-      (NtSetTimerResolution_pfn)
-        GetProcAddress (NtDll, "NtSetTimerResolution");
+      reinterpret_cast <NtSetTimerResolution_pfn> (
+        GetProcAddress (NtDll, "NtSetTimerResolution")
+      );
 
     if (NtQueryTimerResolution != nullptr &&
         NtSetTimerResolution   != nullptr)
@@ -293,15 +314,15 @@ SK_D3D9_GetTimingDevice (void)
   if (! config.render.framerate.wait_for_vblank)
     return nullptr;
 
-  static IDirect3DDevice9Ex* pTimingDevice = (IDirect3DDevice9Ex *)-1;
+  static auto* pTimingDevice =
+    reinterpret_cast <IDirect3DDevice9Ex *> (-1);
 
-  if (pTimingDevice == (IDirect3DDevice9Ex *)-1)
+  if (pTimingDevice == reinterpret_cast <IDirect3DDevice9Ex *> (-1))
   {
     CComPtr <IDirect3D9Ex> pD3D9Ex = nullptr;
 
-    typedef HRESULT
-      (STDMETHODCALLTYPE *Direct3DCreate9ExPROC)(UINT           SDKVersion,
-                                                 IDirect3D9Ex** d3d9ex);
+    using Direct3DCreate9ExPROC = HRESULT (STDMETHODCALLTYPE *)(UINT           SDKVersion,
+                                                                IDirect3D9Ex** d3d9ex);
 
     extern Direct3DCreate9ExPROC Direct3DCreate9Ex_Import;
 
@@ -310,7 +331,7 @@ SK_D3D9_GetTimingDevice (void)
                                     :
                                E_NOINTERFACE;
 
-    HWND hwnd = 0;
+    HWND hwnd = nullptr;
 
     IDirect3DDevice9Ex* pDev9Ex = nullptr;
 
@@ -419,6 +440,8 @@ SK::Framerate::Limiter::init (double target)
   next.QuadPart = static_cast <LONGLONG> (start.QuadPart + (ms / 1000.0) * freq.QuadPart);
 }
 
+#include <SpecialK/window.h>
+
 bool
 SK::Framerate::Limiter::try_wait (void)
 {
@@ -443,13 +466,18 @@ SK::Framerate::Limiter::try_wait (void)
   return false;
 }
 
-bool  SK_Framerate_Busy       = true; // Keep original behavior
-bool  SK_Framerate_YieldOnce  = true;
-float SK_Framerate_WaitScalar = 28.0f;
+bool  SK_Framerate_Busy               = true; // Keep original behavior
+bool  SK_Framerate_YieldOnce          = true;
+bool  SK_Framerate_ReduceInputLatency = false;
+float SK_Framerate_WaitScalar         = 59.998800f;
+float SK_Framerate_SleepToBusy        = 3.3f;
 
 void
 SK::Framerate::Limiter::wait (void)
 {
+  SK_RunOnce ( SetThreadPriority ( GetCurrentThread (),
+                                     THREAD_PRIORITY_ABOVE_NORMAL ) );
+
   static bool restart      = false;
   static bool full_restart = false;
 
@@ -550,11 +578,12 @@ SK::Framerate::Limiter::wait (void)
         }
       }
 
-      else if (static_cast <int> (api) & static_cast <int> (SK_RenderAPI::D3D9))
+      else if ( static_cast <int> (api)       &
+                static_cast <int> (SK_RenderAPI::D3D9) )
       {
         if (rb.device != nullptr)
         {
-          if (FAILED (rb.device->QueryInterface ( IID_PPV_ARGS (&d3d9ex) )))
+          if (FAILED (rb.device->QueryInterface <IDirect3DDevice9Ex> (&d3d9ex)))
           {
             d3d9ex =
               SK_D3D9_GetTimingDevice ();
@@ -564,10 +593,10 @@ SK::Framerate::Limiter::wait (void)
     }
 
     bool bGUI =
-      IsGUIThread (FALSE);
+      IsGUIThread (FALSE) && GetActiveWindow () == game_window.hWnd;
 
     HWND hWndThis =
-      bGUI ? GetActiveWindow () :
+      bGUI ? game_window.hWnd :
              HWND_DESKTOP;
 
     bool bUnicode =
@@ -577,23 +606,36 @@ SK::Framerate::Limiter::wait (void)
     auto PeekAndDispatch =
     [&]
     {
+      if (! SK_Framerate_ReduceInputLatency)
+        return;
+
       MSG msg     = {      };
       msg.hwnd    = hWndThis;
       msg.message = WM_NULL ;
 
+      // Avoid having Windows marshall Unicode messages like a dumbass
       if (bUnicode)
       {
-        if (PeekMessageW   (&msg, hWndThis, 0, 0, PM_REMOVE))
+        if ( PeekMessageW ( &msg, hWndThis, 0, 0,
+                                              PM_REMOVE | PM_QS_INPUT )
+                 &&          msg.message != WM_NULL
+           )
+        {
           DispatchMessageW (&msg);
+        }
       }
 
       else
       {
-        if (PeekMessageA   (&msg, hWndThis, 0, 0, PM_REMOVE))
+        if ( PeekMessageA ( &msg, hWndThis, 0, 0,
+                                              PM_REMOVE | PM_QS_INPUT )
+                 &&          msg.message != WM_NULL
+           )
+        {
           DispatchMessageA (&msg);
+        }
       }
     };
-
 
     bool bYielded = false;
 
@@ -602,8 +644,8 @@ SK::Framerate::Limiter::wait (void)
       // Attempt to use a deeper sleep when possible instead of hammering the
       //   CPU into submission ;)
       if ( ( static_cast <double> (next.QuadPart  - time.QuadPart) >
-                 ( 0.001        * (1000.0         / target_fps) *
-             static_cast <double> (freq.QuadPart) * 0.555 ) )      &&
+             static_cast <double> (freq.QuadPart) * 0.001 *
+                                   SK_Framerate_SleepToBusy) &&
                                   (! (SK_Framerate_YieldOnce && bYielded))
          )
       {
@@ -617,31 +659,34 @@ SK::Framerate::Limiter::wait (void)
         }
 
         else if (! SK_Framerate_Busy)
-        {
-          DWORD dwWaitMS =
+        {                
+          auto dwWaitMS =
             static_cast <DWORD>
               ( (SK_Framerate_WaitScalar * 10.0f) / target_fps ); // 10% of full frame
 
-          if (bGUI)
+          if ( ( static_cast <double> (next.QuadPart - time.QuadPart) /
+                 static_cast <double> (freq.QuadPart                ) ) * 1000.0 >
+                   dwWaitMS )
           {
-            MsgWaitForMultipleObjects (0, nullptr, TRUE, dwWaitMS, QS_ALLINPUT);
-            PeekAndDispatch           (                                       );
-          }
+            if (bGUI && SK_Framerate_ReduceInputLatency)
+            {
+              MsgWaitForMultipleObjects (0, nullptr, TRUE, dwWaitMS, QS_INPUT);
+              PeekAndDispatch           (                                    );
+            }
 
-          else
-            SleepEx              (dwWaitMS,   TRUE);
+            else
+             SleepEx                   (dwWaitMS,   TRUE);
+
+            bYielded = true;
+          }
         }
 
-        bYielded = true;
         QueryPerformanceCounter_Original (&time);
-
         continue;
       }
 
       if (bGUI)
-      {
         PeekAndDispatch ();
-      }
 
       QueryPerformanceCounter_Original (&time);
     }
@@ -731,4 +776,20 @@ int
 SK::Framerate::Stats::calcNumSamples (double seconds)
 {
   return calcNumSamples (SK_DeltaPerf (seconds, freq.QuadPart));
+}
+
+
+LARGE_INTEGER&
+SK_GetPerfFreq (void)
+{
+  static LARGE_INTEGER freq = { 0UL };
+  static bool          init = false;
+  
+  if (!init)
+  {
+    QueryPerformanceFrequency (&freq);
+    init = true;
+  }
+
+  return freq;
 }

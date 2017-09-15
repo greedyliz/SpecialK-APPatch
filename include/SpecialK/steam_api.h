@@ -21,12 +21,11 @@
 #ifndef __SK__STEAM_API_H__
 #define __SK__STEAM_API_H__
 
-#define _CRT_SECURE_NO_WARNINGS
+#include <Windows.h>
 #include <steamapi/steam_api.h>
 
-#include <stdint.h>
+#include <cstdint>
 #include <string>
-#include <SpecialK/utility.h>
 
 #define STEAM_CALLRESULT( thisclass, func, param, var ) CCallResult< thisclass, param > var; void func( param *pParam, bool )
 
@@ -177,6 +176,7 @@ bool           SK_Steam_LoadOverlayEarly            (void);
 void           SK_Steam_InitCommandConsoleVariables (void);
 
 ISteamUtils*   SK_SteamAPI_Utils                    (void);
+ISteamMusic*   SK_SteamAPI_Music                    (void);
 
 uint32_t __stdcall SK_Steam_PiratesAhoy             (void);
 
@@ -186,37 +186,37 @@ uint32_t __stdcall SK_Steam_PiratesAhoy             (void);
 #include <SpecialK/hooks.h>
 
 
-typedef bool (S_CALLTYPE *SteamAPI_Init_pfn    )(void);
-typedef bool (S_CALLTYPE *SteamAPI_InitSafe_pfn)(void);
+using SteamAPI_Init_pfn                  = bool (S_CALLTYPE *    )(void);
+using SteamAPI_InitSafe_pfn              = bool (S_CALLTYPE *)(void);
 
-typedef bool (S_CALLTYPE *SteamAPI_RestartAppIfNecessary_pfn)
+using SteamAPI_RestartAppIfNecessary_pfn = bool (S_CALLTYPE *)
     (uint32 unOwnAppID);
-typedef bool (S_CALLTYPE *SteamAPI_IsSteamRunning_pfn)(void);
+using SteamAPI_IsSteamRunning_pfn        = bool (S_CALLTYPE *)(void);
 
-typedef void (S_CALLTYPE *SteamAPI_Shutdown_pfn)(void);
+using SteamAPI_Shutdown_pfn              = void (S_CALLTYPE *)(void);
 
-typedef void (S_CALLTYPE *SteamAPI_RegisterCallback_pfn)
+using SteamAPI_RegisterCallback_pfn      = void (S_CALLTYPE *)
     (class CCallbackBase *pCallback, int iCallback);
-typedef void (S_CALLTYPE *SteamAPI_UnregisterCallback_pfn)
+using SteamAPI_UnregisterCallback_pfn    = void (S_CALLTYPE *)
     (class CCallbackBase *pCallback);
 
-typedef void (S_CALLTYPE *SteamAPI_RegisterCallResult_pfn)
+using SteamAPI_RegisterCallResult_pfn   = void (S_CALLTYPE *)
     (class CCallbackBase *pCallback, SteamAPICall_t hAPICall );
-typedef void (S_CALLTYPE *SteamAPI_UnregisterCallResult_pfn)
+using SteamAPI_UnregisterCallResult_pfn = void (S_CALLTYPE *)
     (class CCallbackBase *pCallback, SteamAPICall_t hAPICall );
 
-typedef void (S_CALLTYPE *SteamAPI_RunCallbacks_pfn)(void);
+using SteamAPI_RunCallbacks_pfn         = void (S_CALLTYPE *)(void);
 
-typedef HSteamUser (*SteamAPI_GetHSteamUser_pfn)(void);
-typedef HSteamPipe (*SteamAPI_GetHSteamPipe_pfn)(void);
+using SteamAPI_GetHSteamUser_pfn        = HSteamUser (*)(void);
+using SteamAPI_GetHSteamPipe_pfn        = HSteamPipe (*)(void);
 
-typedef ISteamClient* (S_CALLTYPE *SteamClient_pfn)(void);
+using SteamClient_pfn                   = ISteamClient* (S_CALLTYPE *)(void);
 
-typedef bool (*GetControllerState_pfn)
-    (ISteamController* This, uint32 unControllerIndex, SteamControllerState_t *pState);
+//using GetControllerState_pfn            = bool (*)
+//    (ISteamController* This, uint32 unControllerIndex, SteamControllerState_t *pState);
 
-typedef bool (S_CALLTYPE* SteamAPI_InitSafe_pfn)(void);
-typedef bool (S_CALLTYPE* SteamAPI_Init_pfn)    (void);
+using SteamAPI_InitSafe_pfn             = bool (S_CALLTYPE*)(void);
+using SteamAPI_Init_pfn                 = bool (S_CALLTYPE*)(void);
 
 
 
@@ -249,7 +249,7 @@ extern "C" SteamClient_pfn                    SteamClient;
 extern "C" SteamAPI_Shutdown_pfn              SteamAPI_Shutdown;
 extern "C" SteamAPI_Shutdown_pfn              SteamAPI_Shutdown_Original;
 
-extern "C" GetControllerState_pfn             GetControllerState_Original;
+//extern "C" GetControllerState_pfn             GetControllerState_Original;
 
 
 extern "C" bool S_CALLTYPE SteamAPI_InitSafe_Detour     (void);
@@ -272,10 +272,13 @@ void                       SK_Steam_StartPump       (bool force = false);
 
 #include <SpecialK/command.h>
 
+ISteamMusic*
+SAFE_GetISteamMusic (ISteamClient* pClient, HSteamUser hSteamuser, HSteamPipe hSteamPipe, const char *pchVersion);
+
 class SK_SteamAPIContext : public SK_IVariableListener
 {
 public:
-  virtual bool OnVarChange (SK_IVariable* var, void* val = NULL);
+  virtual bool OnVarChange (SK_IVariable* var, void* val = nullptr) override;
 
   bool InitCSteamworks (HMODULE hSteamDLL);
 
@@ -488,15 +491,22 @@ public:
       //return false;
     }
 
+    // This crashes Dark Souls 3, so... do this
+    music_ =
+      SAFE_GetISteamMusic ( client_,
+                              hSteamUser,
+                                hSteamPipe,
+                                  STEAMMUSIC_INTERFACE_VERSION );
+
     SK::SteamAPI::player = user_->GetSteamID ();
 
-#if 0
-    controller_ =
-      client_->GetISteamController (
-        hSteamUser,
-          hSteamPipe,
-            STEAMCONTROLLER_INTERFACE_VERSION );
+    //controller_ =
+    //  client_->GetISteamController (
+    //    hSteamUser,
+    //      hSteamPipe,
+    //        "SteamController" );
 
+#if 0
     void** vftable = *(void***)*(&controller_);
     SK_CreateVFTableHook ( L"ISteamController::GetControllerState",
                              vftable, 3,
@@ -542,6 +552,7 @@ public:
       utils_       = nullptr;
       screenshots_ = nullptr;
       controller_  = nullptr;
+      music_       = nullptr;
       
       if (SteamAPI_Shutdown_Original != nullptr)
       {
@@ -562,6 +573,7 @@ public:
   ISteamUtils*       Utils       (void) { return utils_;       }
   ISteamScreenshots* Screenshots (void) { return screenshots_; }
   ISteamController*  Controller  (void) { return controller_;  }
+  ISteamMusic*       Music       (void) { return music_;       }
 
   SK_IVariable*      popup_origin   = nullptr;
   SK_IVariable*      notify_corner  = nullptr;
@@ -590,6 +602,7 @@ private:
   ISteamUtils*       utils_         = nullptr;
   ISteamScreenshots* screenshots_   = nullptr;
   ISteamController*  controller_    = nullptr;
+  ISteamMusic*       music_         = nullptr;
 } extern steam_ctx;
 
 
@@ -603,6 +616,27 @@ extern          iSK_Logger       steam_log;
 extern          CRITICAL_SECTION callback_cs;
 extern          CRITICAL_SECTION init_cs;
 extern          CRITICAL_SECTION popup_cs;
+
+
+enum class SK_SteamUser_LoggedOn_e
+{
+  Unknown  =  -1,
+  Offline  = 0x0,
+  Online   = 0x1,
+
+  Spoofing = 0x2
+};
+
+// Returns the REAL state, masked with any necessary spoofing
+SK_SteamUser_LoggedOn_e
+SK_SteamUser_BLoggedOn (void);
+
+const wchar_t*
+SK_Steam_PopupOriginToWStr (int origin);
+
+int
+SK_Steam_PopupOriginWStrToEnum (const wchar_t* str);
+
 
 
 #endif /* __SK__STEAM_API_H__ */

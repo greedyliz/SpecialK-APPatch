@@ -19,9 +19,6 @@
  *
 **/
 
-#define _CRT_SECURE_NO_WARNINGS
-#define _CRT_NON_CONFORMING_SWPRINTFS
-
 #include <SpecialK/core.h>
 #include <SpecialK/stdafx.h>
 #include <SpecialK/hooks.h>
@@ -48,6 +45,7 @@
 
 #include <SpecialK/config.h>
 #include <SpecialK/osd/text.h>
+#include <SpecialK/memory_monitor.h>
 #include <SpecialK/io_monitor.h>
 #include <SpecialK/import.h>
 #include <SpecialK/console.h>
@@ -57,6 +55,7 @@
 #include <SpecialK/render_backend.h>
 #include <SpecialK/dxgi_backend.h>
 #include <SpecialK/vulkan_backend.h>
+#include <SpecialK/nvapi.h>
 #include <d3d9.h>
 #include <d3d11.h>
 #include <wingdi.h>
@@ -84,6 +83,9 @@
 #include <CEGUI/System.h>
 #include <CEGUI/Logger.h>
 
+
+extern iSK_Logger game_debug;
+
 extern void SK_InitWindow (HWND hWnd);
 
 
@@ -92,16 +94,13 @@ static const GUID IID_ID3D11Device3 = { 0xa05c8c37, 0xd2c6, 0x4732, { 0xb3, 0xa0
 static const GUID IID_ID3D11Device4 = { 0x8992ab71, 0x02e6, 0x4b8d, { 0xba, 0x48, 0xb0, 0x56, 0xdc, 0xda, 0x42, 0xc4 } };
 static const GUID IID_ID3D11Device5 = { 0x8ffde202, 0xa0e7, 0x45df, { 0x9e, 0x01, 0xe8, 0x37, 0x80, 0x1b, 0x5e, 0xa0 } };
 
-volatile HANDLE  hInitThread   = { 0 };
+volatile HANDLE  hInitThread   = { nullptr };
          HANDLE  hPumpThread   = { INVALID_HANDLE_VALUE };
-
-// Disable SLI memory in Batman Arkham Knight
-bool USE_SLI = true;
 
 NV_GET_CURRENT_SLI_STATE sli_state;
 BOOL                     nvapi_init       = FALSE;
-HMODULE                  backend_dll      = 0;
-const wchar_t*           __SK_DLL_Backend = nullptr;
+HMODULE                  backend_dll      = nullptr;
+const wchar_t*           __SK_DLL_Backend = L"INVALID";
 
 // LOL -- This tests for RunDLL32 / SKIM
 bool
@@ -110,8 +109,8 @@ SK_IsSuperSpecialK (void);
 
 
 struct init_params_t {
-  const wchar_t* backend;
-  void*          callback;
+  const wchar_t* backend  = L"INVALID";
+  void*          callback =    nullptr;
 } init_;
 
 
@@ -119,7 +118,7 @@ std::queue <DWORD> __SK_Init_Suspended_tids;
 
 wchar_t SK_RootPath   [MAX_PATH + 2] = { };
 wchar_t SK_ConfigPath [MAX_PATH + 2] = { };
-wchar_t SK_Backend    [128];
+wchar_t SK_Backend    [     128    ] = { };
 
 __declspec (noinline)
 const wchar_t*
@@ -443,7 +442,7 @@ SK_DescribeHRESULT (HRESULT result)
 
 HANDLE osd_shutdown = INVALID_HANDLE_VALUE;
 
-// Stupid solution for games that inexplicibly draw to the screen
+// Stupid solution for games that inexplicably draw to the screen
 //   without ever swapping buffers.
 DWORD
 WINAPI
@@ -475,7 +474,7 @@ SK_StartPerfMonThreads (void)
     //
     // Spawn Process Monitor Thread
     //
-    if ( InterlockedCompareExchangePointer (&process_stats.hThread, 0, INVALID_HANDLE_VALUE) ==
+    if ( InterlockedCompareExchangePointer (&process_stats.hThread, nullptr, INVALID_HANDLE_VALUE) ==
            INVALID_HANDLE_VALUE )
     {
       dll_log.LogEx (true, L"[ WMI Perf ] Spawning Process Monitor...  ");
@@ -501,7 +500,7 @@ SK_StartPerfMonThreads (void)
     //
     // Spawn CPU Refresh Thread
     //
-    if ( InterlockedCompareExchangePointer (&cpu_stats.hThread, 0, INVALID_HANDLE_VALUE) ==
+    if ( InterlockedCompareExchangePointer (&cpu_stats.hThread, nullptr, INVALID_HANDLE_VALUE) ==
            INVALID_HANDLE_VALUE )
     {
       dll_log.LogEx (true, L"[ WMI Perf ] Spawning CPU Monitor...      ");
@@ -524,7 +523,7 @@ SK_StartPerfMonThreads (void)
 
   if (config.disk.show)
   {
-    if ( InterlockedCompareExchangePointer (&disk_stats.hThread, 0, INVALID_HANDLE_VALUE) ==
+    if ( InterlockedCompareExchangePointer (&disk_stats.hThread, nullptr, INVALID_HANDLE_VALUE) ==
            INVALID_HANDLE_VALUE )
     {
       dll_log.LogEx (true, L"[ WMI Perf ] Spawning Disk Monitor...     ");
@@ -547,7 +546,7 @@ SK_StartPerfMonThreads (void)
 
   if (config.pagefile.show)
   {
-    if ( InterlockedCompareExchangePointer (&pagefile_stats.hThread, 0, INVALID_HANDLE_VALUE) ==
+    if ( InterlockedCompareExchangePointer (&pagefile_stats.hThread, nullptr, INVALID_HANDLE_VALUE) ==
            INVALID_HANDLE_VALUE )
     {
       dll_log.LogEx (true, L"[ WMI Perf ] Spawning Pagefile Monitor... ");
@@ -575,11 +574,11 @@ SK_StartPerfMonThreads (void)
 //
 class skMemCmd : public SK_ICommand {
 public:
-  SK_ICommandResult execute (const char* szArgs);
+  virtual SK_ICommandResult execute (const char* szArgs) override;
 
-  int         getNumArgs         (void) { return 2; }
-  int         getNumOptionalArgs (void) { return 1; }
-  int         getNumRequiredArgs (void) {
+  virtual int getNumArgs         (void) override { return 2; }
+  virtual int getNumOptionalArgs (void) override { return 1; }
+  virtual int getNumRequiredArgs (void) override {
     return getNumArgs () - getNumOptionalArgs ();
   }
 
@@ -589,11 +588,11 @@ private:
 
 class skUpdateCmd : public SK_ICommand {
 public:
-  SK_ICommandResult execute (const char* szArgs);
+  virtual SK_ICommandResult execute (const char* szArgs) override;
 
-  int         getNumArgs         (void) { return 1; }
-  int         getNumOptionalArgs (void) { return 1; }
-  int         getNumRequiredArgs (void) {
+  virtual int getNumArgs         (void) override { return 1; }
+  virtual int getNumOptionalArgs (void) override { return 1; }
+  virtual int getNumRequiredArgs (void) override {
     return getNumArgs () - getNumOptionalArgs ();
   }
 
@@ -614,7 +613,7 @@ skUpdateCmd::execute (const char* szArgs)
   else
   {
     wchar_t wszProduct [128] = { };
-    
+
     mbtowc (wszProduct, szArgs, strlen (szArgs));
 
     SK_FetchVersionInfo1 (wszProduct, true);
@@ -775,137 +774,22 @@ volatile ULONG __SK_Init                 = FALSE;
 
 void
 __stdcall
-SK_InitFinishCallback (void)
-{
-  SK_Input_Init ();
-
-
-  SK_ApplyQueuedHooks    ();
-
-
-  SK_DeleteTemporaryFiles ();
-  SK_DeleteTemporaryFiles (L"Version", L"*.old");
-
-  SK::Framerate::Init ();
-
-  dll_log.Log (L"[ SpecialK ] === Initialization Finished! ===");
-
-  if (SK_IsSuperSpecialK ())
-  {
-    LeaveCriticalSection (&init_mutex);
-    return;
-  }
-
-  extern int32_t SK_D3D11_amount_to_purge;
-  SK_GetCommandProcessor ()->AddVariable (
-    "VRAM.Purge",
-      new SK_IVarStub <int32_t> (
-        (int32_t *)&SK_D3D11_amount_to_purge
-      )
-  );
-
-  SK_GetCommandProcessor()->AddVariable(
-    "GPU.StatPollFreq",
-      new SK_IVarStub <float> (
-        &config.gpu.interval
-      )
-  );
-
-  SK_GetCommandProcessor ()->AddVariable (
-    "ImGui.FontScale",
-      new SK_IVarStub <float> (
-        &config.imgui.scale
-      )      
-  );
-
-  SK_InitRenderBackends ();
-
-  skMemCmd*    mem    = new skMemCmd    ();
-  skUpdateCmd* update = new skUpdateCmd ();
-
-  SK_GetCommandProcessor ()->AddCommand ("mem",       mem);
-  SK_GetCommandProcessor ()->AddCommand ("GetUpdate", update);
-
-  //
-  // Game-Specific Stuff that I am not proud of
-  //
-#ifdef _WIN64
-  if (! lstrcmpW (SK_GetHostApp (), L"DarkSoulsIII.exe"))
-    SK_DS3_InitPlugin ();
-#endif
-
-  if (lstrcmpW (SK_GetHostApp (), L"Tales of Zestiria.exe"))
-  {
-    SK_GetCommandProcessor ()->ProcessCommandFormatted (
-      "TargetFPS %f",
-        config.render.framerate.target_fps
-    );
-  }
-
-  // Get rid of the game output log if the user doesn't want it...
-  if (! config.system.game_output)
-  {
-    game_debug.close ();
-    game_debug.silent = true;
-  }
-
-  const wchar_t* config_name = init_.backend;
-
-  if (SK_IsInjected ())
-    config_name = L"SpecialK";
-
-  SK_SaveConfig (config_name);
-
-  SK_Console* pConsole = SK_Console::getInstance ();
-  pConsole->Start ();
-
-    // Create a thread that pumps the OSD
-  if (config.osd.pump || SK_UsingVulkan ())
-  {
-    osd_shutdown =
-      CreateEvent (nullptr, FALSE, FALSE, L"OSD Pump Shutdown");
-
-    dll_log.LogEx (true, L"[ Stat OSD ] Spawning Pump Thread...      ");
-    hPumpThread =
-        CreateThread ( nullptr,
-                         0,
-                           osd_pump,
-                             nullptr,
-                               0,
-                                 nullptr );
-
-    if (hPumpThread != INVALID_HANDLE_VALUE)
-      dll_log.LogEx ( false, L"tid=0x%04x, interval=%04.01f ms\n",
-                        GetThreadId (hPumpThread),
-                          config.osd.pump_interval * 1000.0f );
-    else
-      dll_log.LogEx (false, L"failed!\n");
-  }
-
-  SK_StartPerfMonThreads ();
-
-  SK_ApplyQueuedHooks  ();
-
-  LeaveCriticalSection (&init_mutex);
-}
-
-void
-__stdcall
 SK_InitCore (const wchar_t* backend, void* callback)
 {
   EnterCriticalSection (&init_mutex);
 
   wcscpy (SK_Backend, backend);
 
-  typedef void (WINAPI *finish_pfn)  (void);
-  typedef void (WINAPI *callback_pfn)(_Releases_exclusive_lock_ (init_mutex) finish_pfn);
+  using finish_pfn = void (WINAPI *)  (void);
+  using callback_pfn = void (WINAPI *)(_Releases_exclusive_lock_ (init_mutex) finish_pfn);
 
-  callback_pfn callback_fn =
+  auto callback_fn =
     (callback_pfn)callback;
 
   dll_log.Log (L"[  NvAPI   ] Initializing NVIDIA API          (NvAPI)...");
 
-  nvapi_init = sk::NVAPI::InitializeLibrary (SK_GetHostApp ());
+  nvapi_init =
+    sk::NVAPI::InitializeLibrary (SK_GetHostApp ());
 
   dll_log.Log (L"[  NvAPI   ]              NvAPI Init         { %s }",
                                                      nvapi_init ? L"Success" :
@@ -913,12 +797,14 @@ SK_InitCore (const wchar_t* backend, void* callback)
 
   if (nvapi_init)
   {
-    int num_sli_gpus = sk::NVAPI::CountSLIGPUs ();
+    int num_sli_gpus =
+      sk::NVAPI::CountSLIGPUs ();
 
     dll_log.Log ( L"[  NvAPI   ] >> NVIDIA Driver Version: %s",
                     sk::NVAPI::GetDriverVersion ().c_str () );
 
-    int gpu_count = sk::NVAPI::CountPhysicalGPUs ();
+    int gpu_count =
+      sk::NVAPI::CountPhysicalGPUs ();
 
     dll_log.Log ( gpu_count > 1 ? L"[  NvAPI   ]  * Number of Installed NVIDIA GPUs: %i  "
                                   L"{ SLI: '%s' }"
@@ -972,23 +858,26 @@ SK_InitCore (const wchar_t* backend, void* callback)
       ShellExecute ( GetDesktopWindow (),
                        L"OPEN",
                          SK_GetHostApp (),
-                           NULL,
-                             NULL,
+                           nullptr,
+                             nullptr,
                                SW_SHOWDEFAULT );
       exit (0);
     }
   }
 
+  // Not NVIDIA, maybe AMD?
   else
   {
     dll_log.Log (L"[DisplayLib] Initializing AMD Display Library (ADL)...");
 
-    BOOL adl_init = SK_InitADL ();
+    BOOL adl_init =
+      SK_InitADL ();
 
     dll_log.Log   (L"[DisplayLib]              ADL   Init         { %s }",
                                                      adl_init ? L"Success" :
                                                                 L"Failed ");
 
+    // Yes, AMD driver is in working order ...
     if (adl_init)
     {
       dll_log.Log ( L"[DisplayLib]  * Number of Reported AMD Adapters: %i (%i active)",
@@ -997,13 +886,18 @@ SK_InitCore (const wchar_t* backend, void* callback)
     }
   }
 
-  HMODULE hMod = GetModuleHandle (SK_GetHostApp ());
+  HMODULE hMod =
+    GetModuleHandle (SK_GetHostApp ());
 
-  if (hMod != NULL)
+  if (hMod != nullptr)
   {
-    DWORD* dwOptimus = (DWORD *)GetProcAddress (hMod, "NvOptimusEnablement");
+    auto* dwOptimus =
+      reinterpret_cast <DWORD *> (
+        GetProcAddress ( hMod,
+                           "NvOptimusEnablement" )
+      );
 
-    if (dwOptimus != NULL)
+    if (dwOptimus != nullptr)
     {
       dll_log.Log ( L"[Hybrid GPU]  NvOptimusEnablement..................: 0x%02X (%s)",
                       *dwOptimus,
@@ -1016,10 +910,13 @@ SK_InitCore (const wchar_t* backend, void* callback)
       dll_log.Log (L"[Hybrid GPU]  NvOptimusEnablement..................: UNDEFINED");
     }
 
-    DWORD* dwPowerXpress =
-      (DWORD *)GetProcAddress (hMod, "AmdPowerXpressRequestHighPerformance");
+    auto* dwPowerXpress =
+      reinterpret_cast <DWORD *> (
+        GetProcAddress ( hMod,
+                           "AmdPowerXpressRequestHighPerformance" )
+      );
 
-    if (dwPowerXpress != NULL)
+    if (dwPowerXpress != nullptr)
     {
       dll_log.Log (L"[Hybrid GPU]  AmdPowerXpressRequestHighPerformance.: 0x%02X (%s)",
         *dwPowerXpress,
@@ -1037,14 +934,33 @@ SK_InitCore (const wchar_t* backend, void* callback)
     SK_FAR_InitPlugin ();
 #endif
 
+  BOOL
+  SK_Steam_PreHookCore (void);
+
+  if (! lstrcmpW (SK_GetHostApp (), L"SonicMania.exe"))
+  {
+    SK_Steam_PreHookCore ( );
+
+    extern void SK_SMOKE_InitPlugin (void);
+                SK_SMOKE_InitPlugin (    );
+  }
+
+  else if (config.steam.spoof_BLoggedOn)
+  {
+    SK_Steam_PreHookCore ();
+  }
+
+
   //
-  // TEMP HACK: dgVoodoo2
+  // NOT-SO-TEMP HACK: dgVoodoo2
   //
-  if (SK_GetDLLRole () == DLL_ROLE::D3D8)
-    SK_BootDXGI ();
-  else if (SK_GetDLLRole () == DLL_ROLE::DDraw)
+  if ( SK_GetDLLRole () == DLL_ROLE::D3D8 ||
+       SK_GetDLLRole () == DLL_ROLE::DDraw  )
     SK_BootDXGI ();
 
+  void
+  __stdcall
+  SK_InitFinishCallback (void);
 
   SK_ResumeThreads (__SK_Init_Suspended_tids);
          callback_fn (SK_InitFinishCallback);
@@ -1065,7 +981,7 @@ WaitForInit (void)
   if (InterlockedCompareExchange (&__SK_Init, FALSE, FALSE))
     return;
 
-  while (InterlockedCompareExchangePointer ((LPVOID *)&hInitThread, nullptr, nullptr) == 0)
+  while (InterlockedCompareExchangePointer ((LPVOID *)&hInitThread, nullptr, nullptr) == nullptr)
     SleepEx (150, TRUE);
 
   while (InterlockedCompareExchangePointer ((LPVOID *)&hInitThread, nullptr, nullptr) != INVALID_HANDLE_VALUE)
@@ -1098,7 +1014,10 @@ WaitForInit (void)
   {
     SK_ApplyQueuedHooks ();
 
-    CloseHandle (InterlockedExchangePointer ((LPVOID *)&hInitThread, INVALID_HANDLE_VALUE));
+    CloseHandle (
+      InterlockedExchangePointer ( const_cast <LPVOID *> (&hInitThread),
+                                     INVALID_HANDLE_VALUE )
+    );
 
     // Load user-defined DLLs (Lazy)
 #ifdef _WIN64
@@ -1112,7 +1031,120 @@ WaitForInit (void)
   }
 }
 
-typedef HWND (WINAPI *CreateWindowW_pfn)(
+
+
+void
+__stdcall
+SK_InitFinishCallback (void)
+{
+  SK_Input_Init       ();
+
+  SK_ApplyQueuedHooks ();
+
+  SK_DeleteTemporaryFiles ();
+  SK_DeleteTemporaryFiles (L"Version", L"*.old");
+
+  SK::Framerate::Init ();
+
+  dll_log.Log (L"[ SpecialK ] === Initialization Finished! ===");
+
+  if (SK_IsSuperSpecialK ())
+  {
+    LeaveCriticalSection (&init_mutex);
+    return;
+  }
+
+  extern int32_t SK_D3D11_amount_to_purge;
+  SK_GetCommandProcessor ()->AddVariable (
+    "VRAM.Purge",
+      new SK_IVarStub <int32_t> (
+        (int32_t *)&SK_D3D11_amount_to_purge
+      )
+  );
+
+  SK_GetCommandProcessor ()->AddVariable (
+    "GPU.StatPollFreq",
+      new SK_IVarStub <float> (
+        &config.gpu.interval
+      )
+  );
+
+  SK_GetCommandProcessor ()->AddVariable (
+    "ImGui.FontScale",
+      new SK_IVarStub <float> (
+        &config.imgui.scale
+      )      
+  );
+
+  SK_InitRenderBackends ();
+
+  SK_GetCommandProcessor ()->AddCommand ("mem",       new skMemCmd    ());
+  SK_GetCommandProcessor ()->AddCommand ("GetUpdate", new skUpdateCmd ());
+
+  //
+  // Game-Specific Stuff that I am not proud of
+  //
+#ifdef _WIN64
+  if (! lstrcmpW (SK_GetHostApp (), L"DarkSoulsIII.exe"))
+    SK_DS3_InitPlugin ();
+#endif
+
+  if (lstrcmpW (SK_GetHostApp (), L"Tales of Zestiria.exe"))
+  {
+    SK_GetCommandProcessor ()->ProcessCommandFormatted (
+      "TargetFPS %f",
+        config.render.framerate.target_fps
+    );
+  }
+
+  // Get rid of the game output log if the user doesn't want it...
+  if (! config.system.game_output)
+  {
+    game_debug.close ();
+    game_debug.silent = true;
+  }
+
+  const wchar_t* config_name =
+    init_.backend;
+
+  if (SK_IsInjected ())
+    config_name = L"SpecialK";
+
+  SK_SaveConfig (config_name);
+
+  SK_Console::getInstance ()->Start ();
+
+    // Create a thread that pumps the OSD
+  if (config.osd.pump || SK_UsingVulkan ())
+  {
+    osd_shutdown =
+      CreateEvent (nullptr, FALSE, FALSE, L"OSD Pump Shutdown");
+
+    dll_log.LogEx (true, L"[ Stat OSD ] Spawning Pump Thread...      ");
+    hPumpThread =
+        CreateThread ( nullptr,
+                         0,
+                           osd_pump,
+                             nullptr,
+                               0,
+                                 nullptr );
+
+    if (hPumpThread != INVALID_HANDLE_VALUE)
+      dll_log.LogEx ( false, L"tid=0x%04x, interval=%04.01f ms\n",
+                        GetThreadId (hPumpThread),
+                          config.osd.pump_interval * 1000.0f );
+    else
+      dll_log.LogEx (false, L"failed!\n");
+  }
+
+  SK_StartPerfMonThreads ();
+  SK_ApplyQueuedHooks    ();
+
+  LeaveCriticalSection (&init_mutex);
+}
+
+
+using CreateWindowW_pfn = HWND (WINAPI *)(
   _In_opt_ LPCWSTR   lpClassName,
   _In_opt_ LPCWSTR   lpWindowName,
   _In_     DWORD     dwStyle,
@@ -1126,7 +1158,7 @@ typedef HWND (WINAPI *CreateWindowW_pfn)(
   _In_opt_ LPVOID    lpParam
 );
 
-typedef HWND (WINAPI *CreateWindowA_pfn)(
+using CreateWindowA_pfn = HWND (WINAPI *)(
   _In_opt_ LPCSTR    lpClassName,
   _In_opt_ LPCSTR    lpWindowName,
   _In_     DWORD     dwStyle,
@@ -1140,7 +1172,7 @@ typedef HWND (WINAPI *CreateWindowA_pfn)(
   _In_opt_ LPVOID    lpParam
 );
 
-typedef HWND (WINAPI *CreateWindowExW_pfn)(
+using CreateWindowExW_pfn = HWND (WINAPI *)(
   _In_     DWORD     dwExStyle,
   _In_opt_ LPCWSTR   lpClassName,
   _In_opt_ LPCWSTR   lpWindowName,
@@ -1155,7 +1187,7 @@ typedef HWND (WINAPI *CreateWindowExW_pfn)(
   _In_opt_ LPVOID    lpParam
 );
 
-typedef HWND (WINAPI *CreateWindowExA_pfn)(
+using CreateWindowExA_pfn = HWND (WINAPI *)(
   _In_     DWORD     dwExStyle,
   _In_opt_ LPCSTR    lpClassName,
   _In_opt_ LPCSTR    lpWindowName,
@@ -1321,8 +1353,8 @@ DWORD
 WINAPI
 DllThread (LPVOID user)
 {
-  init_params_t* params =
-    (init_params_t *)user;
+  auto* params =
+    static_cast <init_params_t *> (user);
 
   SK_InitCore (params->backend, params->callback);
 
@@ -1528,7 +1560,7 @@ SK_StartupCore (const wchar_t* backend, void* callback)
     if ( blacklist )
     {
       //FreeLibrary_Original (SK_GetDLL ());
-      return true;
+      return false;
     }
 
     // For the global injector, when not started by SKIM, check its version
@@ -1685,32 +1717,32 @@ SK_StartupCore (const wchar_t* backend, void* callback)
 
       if (! GetModuleHandle (wszSteamDLL))
       {
-        wchar_t wszDLLPath [MAX_PATH * 2 + 1] = { };
-
-        if (SK_IsInjected ())
-          wcsncpy (wszDLLPath, SK_GetModuleFullName (SK_GetDLL ()).c_str (), MAX_PATH * 2);
-        else
-        {
-          _swprintf ( wszDLLPath, L"%s\\My Mods\\SpecialK\\SpecialK.dll",
-                        SK_GetDocumentsDir ().c_str () );
-        }
-
-        if (PathRemoveFileSpec (wszDLLPath))
-        {
-          lstrcatW (wszDLLPath, L"\\");
-          lstrcatW (wszDLLPath, wszSteamDLL);
-
-          if (SK_GetFileSize (wszDLLPath) > 0)
-          {
-            HMODULE hMod = LoadLibraryW_Original (wszDLLPath);
+        //wchar_t wszDLLPath [MAX_PATH * 2 + 1] = { };
+        //
+        //if (SK_IsInjected ())
+        //  wcsncpy (wszDLLPath, SK_GetModuleFullName (SK_GetDLL ()).c_str (), MAX_PATH * 2);
+        //else
+        //{
+        //  _swprintf ( wszDLLPath, L"%s\\My Mods\\SpecialK\\SpecialK.dll",
+        //                SK_GetDocumentsDir ().c_str () );
+        //}
+        //
+        //if (PathRemoveFileSpec (wszDLLPath))
+        //{
+        //  lstrcatW (wszDLLPath, L"\\");
+        //  lstrcatW (wszDLLPath, wszSteamDLL);
+        //
+        //  if (SK_GetFileSize (wszDLLPath) > 0)
+        //  {
+            HMODULE hMod = LoadLibraryW_Original (wszSteamDLL);
 
             if (hMod)
             {
               dll_log.Log ( L"[DLL Loader]   Manually booted SteamAPI: '%s'",
-                              wszDLLPath );
+                              wszSteamDLL );//wszDLLPath );
             }
-          }
-        }
+          //}
+        //}
       }
     }
   }
@@ -1735,9 +1767,6 @@ SK_StartupCore (const wchar_t* backend, void* callback)
 
 
 BACKEND_INIT:
-  if (! lstrcmpW (SK_GetHostApp (), L"BatmanAK.exe"))
-    USE_SLI = false;
-
   dll_log.LogEx (false,
     L"----------------------------------------------------------------------"
     L"---------------------\n");
@@ -1801,12 +1830,12 @@ BACKEND_INIT:
 
   if (! SK_IsInjected ())
   {
-    for (int i = 0; i < SK_MAX_IMPORTS; i++)
+    for (auto& import : imports)
     {
-      if (imports [i].role != nullptr && imports [i].role->get_value () == backend)
+      if (import.role != nullptr && import.role->get_value () == backend)
       {
         dll_log.LogEx (true, L" Loading proxy %s.dll:    ", backend);
-        dll_name   = _wcsdup (imports [i].filename->get_value ().c_str ());
+        dll_name   = _wcsdup (import.filename->get_value ().c_str ());
         load_proxy = true;
         break;
       }
@@ -1838,7 +1867,7 @@ BACKEND_INIT:
   //  backend_dll = LoadLibraryExW_Original ( dll_name, nullptr, use_system_dll ?
   //                                           LOAD_LIBRARY_SEARCH_SYSTEM32 : 0x00);
 
-  if (backend_dll != NULL)
+  if (backend_dll != nullptr)
     dll_log.LogEx (false, L" (%s)\n", dll_name);
   else
     dll_log.LogEx (false, L" FAILED (%s)!\n", dll_name);
@@ -1968,14 +1997,14 @@ SK_ShutdownCore (const wchar_t* backend)
        (! lstrcmpW (SK_GetHostApp (), L"Fallout4.exe"))     ||
        (! lstrcmpW (SK_GetHostApp (), L"FFX.exe"))          ||
        (! lstrcmpW (SK_GetHostApp (), L"FFX-2.exe"))        ||
-       (! lstrcmpW (SK_GetHostApp (), L"dis1_st.exe")) )
+       (! lstrcmpW (SK_GetHostApp (), L"dis1_st.exe"))      ||
+       (! lstrcmpW (SK_GetHostApp (), L"EoCApp.exe")) )
     ChangeDisplaySettingsA (nullptr, CDS_RESET);
 
   SK_AutoClose_Log (game_debug);
   SK_AutoClose_Log (   dll_log);
 
-  SK_Console* pConsole = SK_Console::getInstance ();
-  pConsole->End ();
+  SK_Console::getInstance ()->End ();
 
   SK::DXGI::ShutdownBudgetThread ();
 
@@ -1997,7 +2026,10 @@ SK_ShutdownCore (const wchar_t* backend)
     dll_log.LogEx   (false, L"done!\n");
   }
 
-  auto ShutdownWMIThread = [](volatile HANDLE& hSignal, volatile HANDLE& hThread, wchar_t* wszName)
+  auto ShutdownWMIThread =
+  []( volatile HANDLE&  hSignal,
+      volatile HANDLE&  hThread,
+               wchar_t* wszName )
   {
     wchar_t wszFmtName [32] = { };
 
@@ -2138,7 +2170,7 @@ SK_BeginBufferSwap (void)
 
   if (InterlockedCompareExchange (&first, 0, 0))
   {
-    if (SK_GetGameWindow () != 0)
+    if (SK_GetGameWindow () != nullptr)
     {
       extern void SK_ResetWindow ();
 
@@ -2226,21 +2258,21 @@ SK_BeginBufferSwap (void)
   
       // This is only guaranteed to be supported on Windows 8, but Win7 and Vista
       //   do support it if a certain Windows Update (KB2533623) is installed.
-      typedef DLL_DIRECTORY_COOKIE (WINAPI *AddDllDirectory_pfn)          (_In_ PCWSTR               NewDirectory);
-      typedef BOOL                 (WINAPI *RemoveDllDirectory_pfn)       (_In_ DLL_DIRECTORY_COOKIE Cookie);
-      typedef BOOL                 (WINAPI *SetDefaultDllDirectories_pfn) (_In_ DWORD                DirectoryFlags);
+      using AddDllDirectory_pfn          = DLL_DIRECTORY_COOKIE (WINAPI *)(_In_ PCWSTR               NewDirectory);
+      using RemoveDllDirectory_pfn       = BOOL                 (WINAPI *)(_In_ DLL_DIRECTORY_COOKIE Cookie);
+      using SetDefaultDllDirectories_pfn = BOOL                 (WINAPI *)(_In_ DWORD                DirectoryFlags);
   
-      static AddDllDirectory_pfn k32_AddDllDirectory =
+      static auto k32_AddDllDirectory =
         (AddDllDirectory_pfn)
           GetProcAddress ( GetModuleHandle (L"kernel32.dll"),
                              "AddDllDirectory" );
   
-      static RemoveDllDirectory_pfn k32_RemoveDllDirectory =
+      static auto k32_RemoveDllDirectory =
         (RemoveDllDirectory_pfn)
           GetProcAddress ( GetModuleHandle (L"kernel32.dll"),
                              "RemoveDllDirectory" );
   
-      static SetDefaultDllDirectories_pfn k32_SetDefaultDllDirectories =
+      static auto k32_SetDefaultDllDirectories =
         (SetDefaultDllDirectories_pfn)
           GetProcAddress ( GetModuleHandle (L"kernel32.dll"),
                              "SetDefaultDllDirectories" );
@@ -2269,7 +2301,7 @@ SK_BeginBufferSwap (void)
                 LOAD_LIBRARY_SEARCH_SYSTEM32        | LOAD_LIBRARY_SEARCH_USER_DIRS
               );
   
-              DLL_DIRECTORY_COOKIE cookie = 0;
+              DLL_DIRECTORY_COOKIE cookie = nullptr;
               bool                 ret    = false;
   
               __try
@@ -2311,7 +2343,8 @@ SK_BeginBufferSwap (void)
 
           if (config.apis.dxgi.d3d11.hook)
           {
-            if ( (int)SK_GetCurrentRenderBackend ().api & (int)SK_RenderAPI::D3D11 )
+            if ( static_cast <int> (SK_GetCurrentRenderBackend ().api) &
+                 static_cast <int> (SK_RenderAPI::D3D11              ) )
             {
               if (DelayLoadDLL ("CEGUIDirect3D11Renderer-0.dll"))
                 config.cegui.enable = true;
@@ -2335,24 +2368,12 @@ SK_BeginBufferSwap (void)
 
   SK_DrawOSD         ();
   SK_DrawConsole     ();
-  extern void SK_DrawTexMgrStats (void);
-  SK_DrawTexMgrStats ();
 
   static HMODULE hModTBFix = GetModuleHandle( L"tbfix.dll");
-
-  const char* szFirst = "First-frame Done";
 
   if (hModTBFix)
   {
     SK::Framerate::GetLimiter ()->wait ();
-  }
-
-  extern bool SK_ImGui_Visible;
-
-  extern uint32_t WINAPI SK_Steam_PiratesAhoy (void);
-  if (SK_Steam_PiratesAhoy () && (! SK_ImGui_Visible))
-  {
-	
   }
 
   extern void SK_ImGui_PollGamepad_EndFrame (void);
@@ -2671,8 +2692,10 @@ SK_EndBufferSwap (HRESULT hr, IUnknown* device)
 
     if (SUCCEEDED (device->QueryInterface <IDirect3DDevice9Ex> (&pDev9Ex)))
     {
-         (int&)__SK_RBkEnd.api  = ( (int)SK_RenderAPI::D3D9 |
-                                    (int)SK_RenderAPI::D3D9Ex );
+      reinterpret_cast <int &> (__SK_RBkEnd.api) = 
+        ( static_cast <int> (SK_RenderAPI::D3D9  ) |
+          static_cast <int> (SK_RenderAPI::D3D9Ex)  );
+
       wcsncpy (__SK_RBkEnd.name, L"D3D9Ex", 8);
     }
 
@@ -2730,14 +2753,17 @@ SK_EndBufferSwap (HRESULT hr, IUnknown* device)
         wcscpy (__SK_RBkEnd.name, L"DDraw");
       }
 
-      if ((int)__SK_RBkEnd.api & (int)SK_RenderAPI::D3D11)
+      if ( static_cast <int> (__SK_RBkEnd.api)  &
+           static_cast <int> (SK_RenderAPI::D3D11) )
       {
         BOOL fullscreen = FALSE;
 
-        CComPtr <IDXGISwapChain> pSwapChain = nullptr;
-        if (__SK_RBkEnd.swapchain) __SK_RBkEnd.swapchain->QueryInterface <IDXGISwapChain> (&pSwapChain);
+        CComPtr                                 <IDXGISwapChain>   pSwapChain = nullptr;
+        if (__SK_RBkEnd.swapchain)
+          __SK_RBkEnd.swapchain->QueryInterface <IDXGISwapChain> (&pSwapChain);
 
-        if (pSwapChain && SUCCEEDED (pSwapChain->GetFullscreenState (&fullscreen, nullptr)))
+        if ( pSwapChain &&
+  SUCCEEDED (pSwapChain->GetFullscreenState (&fullscreen, nullptr)) )
         {
           __SK_RBkEnd.fullscreen_exclusive = fullscreen;
         }
@@ -2767,16 +2793,18 @@ SK_EndBufferSwap (HRESULT hr, IUnknown* device)
 
   else
   {
-    if (config.apis.OpenGL.hook && SK_GetCurrentGLContext () != 0)
+    if (config.apis.OpenGL.hook && SK_GetCurrentGLContext () != nullptr)
     {
                __SK_RBkEnd.api  = SK_RenderAPI::OpenGL;
       wcsncpy (__SK_RBkEnd.name, L"OpenGL", 8);
     }
   }
 
-  config.apis.last_known = __SK_RBkEnd.api;
+  config.apis.last_known =
+    __SK_RBkEnd.api;
 
-  static volatile ULONG budget_init = FALSE;
+  static volatile
+    ULONG budget_init = FALSE;
 
   if (! InterlockedCompareExchange (&budget_init, TRUE, FALSE))
   {
@@ -2788,8 +2816,8 @@ SK_EndBufferSwap (HRESULT hr, IUnknown* device)
 
   // Treat resize and obscured statuses as failures; DXGI does not, but
   //  we should not draw the OSD when these events happen.
-  if (FAILED (hr))
-    return hr;
+  ////if (FAILED (hr))
+  ////  return hr;
 
   DoKeyboard ();
 

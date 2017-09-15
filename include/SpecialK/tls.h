@@ -28,9 +28,41 @@
 #define _NO_CVCONST_H
 #include <dbghelp.h>
 
-struct SK_TLS {
+struct ID3D11RasterizerState;
+
+#include <unordered_map>
+
+class SK_ModuleAddrMap
+{
+public:
+  SK_ModuleAddrMap (void);
+
+  bool contains (LPVOID pAddr, HMODULE* phMod);
+  void insert   (LPVOID pAddr, HMODULE   hMod);
+
+  void* pResolved = nullptr;
+};
+
+
+struct SK_TLS
+{
+  SK_ModuleAddrMap known_modules;
+
+  struct tex_mgmt_s
+  {
+    struct stream_pool_s
+    {
+      void*    data     = nullptr;
+      size_t   data_len = 0;
+      uint32_t data_age = 0;
+    } streaming_memory;
+
+    BOOL injection_thread;
+  } texture_management;
+
   struct {
-    BOOL texinject_thread    = FALSE;
+    ID3D11RasterizerState* pRasterStateOrig  = nullptr;
+    ID3D11RasterizerState* pRasterStateNew   = nullptr;
   } d3d11;
 
   struct {
